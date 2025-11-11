@@ -1,0 +1,89 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - integrated with auth (NextAuth/Auth.js compatible)
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  type          UserType  @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  schedules     Schedule[]
+  friendshipsAsUser1 Friendship[] @relation("User1Friendships")
+  friendshipsAsUser2 Friendship[] @relation("User2Friendships")
+
+  @@map("users")
+}
+
+enum UserType {
+  USER
+  ADMIN
+}
+
+// Friendship model
+model Friendship {
+  user_id1  String      @map("user_id1")
+  user_id2  String      @map("user_id2")
+  status    FriendshipStatus @default(PENDING)
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  // Relations
+  user1     User        @relation("User1Friendships", fields: [user_id1], references: [id], onDelete: Cascade)
+  user2     User        @relation("User2Friendships", fields: [user_id2], references: [id], onDelete: Cascade)
+
+  @@id([user_id1, user_id2])
+  @@map("friendships")
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  BLOCKED
+}
+
+// Schedule model
+model Schedule {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events    Event[]
+
+  @@index([userId])
+  @@map("schedules")
+}
+
+// Event model
+model Event {
+  id         String   @id @default(cuid())
+  scheduleId String   @map("schedule_id")
+  start      DateTime
+  end        DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId])
+  @@map("events")
+}
