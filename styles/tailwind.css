@@ -414,3 +414,73 @@
     @apply bg-background text-foreground antialiased;
   }
 }
+
+@layer utilities {
+  @keyframes blob-drift {
+    0%,
+    100% {
+      transform: translate3d(-25%, -15%, 0) scale(1);
+    }
+    22% {
+      transform: translate3d(38%, -28%, 0) scale(1.06);
+    }
+    48% {
+      transform: translate3d(42%, 26%, 0) scale(0.94);
+    }
+    74% {
+      transform: translate3d(-32%, 30%, 0) scale(1.03);
+    }
+  }
+
+  @keyframes blob-drift-alt {
+    0%,
+    100% {
+      transform: translate3d(18%, -20%, 0) scale(1.02);
+    }
+    25% {
+      transform: translate3d(-30%, -28%, 0) scale(0.95);
+    }
+    55% {
+      transform: translate3d(-36%, 32%, 0) scale(1.04);
+    }
+    80% {
+      transform: translate3d(34%, 24%, 0) scale(0.97);
+    }
+  }
+
+  @keyframes blob-drift-reverse {
+    0%,
+    100% {
+      transform: translate3d(-18%, 18%, 0) scale(1);
+    }
+    28% {
+      transform: translate3d(30%, 30%, 0) scale(1.05);
+    }
+    58% {
+      transform: translate3d(32%, -34%, 0) scale(0.93);
+    }
+    86% {
+      transform: translate3d(-36%, -26%, 0) scale(1.04);
+    }
+  }
+
+  .animate-blob-slow {
+    animation: blob-drift 42s ease-in-out infinite;
+  }
+
+  .animate-blob-medium {
+    animation: blob-drift-alt 30s ease-in-out infinite;
+  }
+
+  .animate-blob-reverse {
+    animation: blob-drift-reverse 36s ease-in-out infinite;
+  }
+
+  .animation-delay-2000 {
+    animation-delay: 2s;
+  }
+
+  .animation-delay-4000 {
+    animation-delay: 4s;
+  }
+}
