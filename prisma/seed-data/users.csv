@@ -1,0 +1,7 @@
+id,email,emailVerified,name,image,type,createdAt,updatedAt
+user1,alice@example.com,2024-01-01T00:00:00Z,Alice Johnson,,USER,2024-01-01T00:00:00Z,2024-01-01T00:00:00Z
+user2,bob@example.com,2024-01-02T00:00:00Z,Bob Smith,,USER,2024-01-02T00:00:00Z,2024-01-02T00:00:00Z
+user3,charlie@example.com,2024-01-03T00:00:00Z,Charlie Brown,,USER,2024-01-03T00:00:00Z,2024-01-03T00:00:00Z
+user4,diana@example.com,2024-01-04T00:00:00Z,Diana Prince,,ADMIN,2024-01-04T00:00:00Z,2024-01-04T00:00:00Z
+user5,eve@example.com,2024-01-05T00:00:00Z,Eve Wilson,,USER,2024-01-05T00:00:00Z,2024-01-05T00:00:00Z
+
