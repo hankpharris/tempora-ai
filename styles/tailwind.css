@@ -1,5 +1,99 @@
 @import 'tailwindcss';
 
+@theme {
+  --color-background: #f6fffa;
+  --color-foreground: #004c1b;
+  --color-overlay: #000000;
+  --color-focus: #66cc8a;
+
+  --color-default: #b9c9be;
+  --color-default-50: #f6f8f7;
+  --color-default-100: #eaefec;
+  --color-default-200: #dee5e0;
+  --color-default-300: #d2dcd5;
+  --color-default-400: #c5d2c9;
+  --color-default-500: #b9c9be;
+  --color-default-600: #99a69d;
+  --color-default-700: #78837c;
+  --color-default-800: #585f5a;
+  --color-default-900: #383c39;
+  --color-default-foreground: #000000;
+
+  --color-primary: #66cc8a;
+  --color-primary-50: #ecf9f0;
+  --color-primary-100: #d1f0dc;
+  --color-primary-200: #b6e7c7;
+  --color-primary-300: #9cdeb3;
+  --color-primary-400: #81d59e;
+  --color-primary-500: #66cc8a;
+  --color-primary-600: #54a872;
+  --color-primary-700: #42855a;
+  --color-primary-800: #306142;
+  --color-primary-900: #1f3d29;
+  --color-primary-foreground: #000000;
+
+  --color-secondary: #377cfb;
+  --color-secondary-50: #e6efff;
+  --color-secondary-100: #c3d8fe;
+  --color-secondary-200: #a0c1fd;
+  --color-secondary-300: #7daafc;
+  --color-secondary-400: #5a93fc;
+  --color-secondary-500: #377cfb;
+  --color-secondary-600: #2d66cf;
+  --color-secondary-700: #2451a3;
+  --color-secondary-800: #1a3b77;
+  --color-secondary-900: #11254b;
+  --color-secondary-foreground: #000000;
+
+  --color-success: #00a96e;
+  --color-success-50: #dff4ed;
+  --color-success-100: #b3e5d4;
+  --color-success-200: #86d6ba;
+  --color-success-300: #59c7a1;
+  --color-success-400: #2db887;
+  --color-success-500: #00a96e;
+  --color-success-600: #008b5b;
+  --color-success-700: #006e48;
+  --color-success-800: #005034;
+  --color-success-900: #003321;
+  --color-success-foreground: #000000;
+
+  --color-warning: #ffbe00;
+  --color-warning-50: #fff7df;
+  --color-warning-100: #ffecb3;
+  --color-warning-200: #ffe086;
+  --color-warning-300: #ffd559;
+  --color-warning-400: #ffc92d;
+  --color-warning-500: #ffbe00;
+  --color-warning-600: #d29d00;
+  --color-warning-700: #a67c00;
+  --color-warning-800: #795a00;
+  --color-warning-900: #4d3900;
+  --color-warning-foreground: #000000;
+
+  --color-danger: #ff5861;
+  --color-danger-50: #ffeaeb;
+  --color-danger-100: #ffcdd0;
+  --color-danger-200: #ffb0b4;
+  --color-danger-300: #ff9298;
+  --color-danger-400: #ff757d;
+  --color-danger-500: #ff5861;
+  --color-danger-600: #d24950;
+  --color-danger-700: #a6393f;
+  --color-danger-800: #792a2e;
+  --color-danger-900: #4d1a1d;
+  --color-danger-foreground: #000000;
+
+  --color-content1: #e0f5e8;
+  --color-content1-foreground: #000000;
+  --color-content2: #c2ebd0;
+  --color-content2-foreground: #000000;
+  --color-content3: #a3e0b9;
+  --color-content3-foreground: #000000;
+  --color-content4: #85d6a1;
+  --color-content4-foreground: #000000;
+}
+
 /*
   The default border color has changed to `currentColor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still
@@ -9,11 +103,314 @@
   color utility to any element that depends on these defaults.
 */
 @layer base {
+  :root {
+    color-scheme: light;
+    --heroui-layout-disabledOpacity: 0.5;
+
+    --heroui-colors-background: var(--color-background);
+    --heroui-colors-foreground: var(--color-foreground);
+    --heroui-colors-overlay: var(--color-overlay);
+    --heroui-colors-focus: var(--color-focus);
+
+    --heroui-colors-default: var(--color-default);
+    --heroui-colors-default-50: var(--color-default-50);
+    --heroui-colors-default-100: var(--color-default-100);
+    --heroui-colors-default-200: var(--color-default-200);
+    --heroui-colors-default-300: var(--color-default-300);
+    --heroui-colors-default-400: var(--color-default-400);
+    --heroui-colors-default-500: var(--color-default-500);
+    --heroui-colors-default-600: var(--color-default-600);
+    --heroui-colors-default-700: var(--color-default-700);
+    --heroui-colors-default-800: var(--color-default-800);
+    --heroui-colors-default-900: var(--color-default-900);
+    --heroui-colors-default-foreground: var(--color-default-foreground);
+
+    --heroui-colors-primary: var(--color-primary);
+    --heroui-colors-primary-50: var(--color-primary-50);
+    --heroui-colors-primary-100: var(--color-primary-100);
+    --heroui-colors-primary-200: var(--color-primary-200);
+    --heroui-colors-primary-300: var(--color-primary-300);
+    --heroui-colors-primary-400: var(--color-primary-400);
+    --heroui-colors-primary-500: var(--color-primary-500);
+    --heroui-colors-primary-600: var(--color-primary-600);
+    --heroui-colors-primary-700: var(--color-primary-700);
+    --heroui-colors-primary-800: var(--color-primary-800);
+    --heroui-colors-primary-900: var(--color-primary-900);
+    --heroui-colors-primary-foreground: var(--color-primary-foreground);
+
+    --heroui-colors-secondary: var(--color-secondary);
+    --heroui-colors-secondary-50: var(--color-secondary-50);
+    --heroui-colors-secondary-100: var(--color-secondary-100);
+    --heroui-colors-secondary-200: var(--color-secondary-200);
+    --heroui-colors-secondary-300: var(--color-secondary-300);
+    --heroui-colors-secondary-400: var(--color-secondary-400);
+    --heroui-colors-secondary-500: var(--color-secondary-500);
+    --heroui-colors-secondary-600: var(--color-secondary-600);
+    --heroui-colors-secondary-700: var(--color-secondary-700);
+    --heroui-colors-secondary-800: var(--color-secondary-800);
+    --heroui-colors-secondary-900: var(--color-secondary-900);
+    --heroui-colors-secondary-foreground: var(--color-secondary-foreground);
+
+    --heroui-colors-success: var(--color-success);
+    --heroui-colors-success-50: var(--color-success-50);
+    --heroui-colors-success-100: var(--color-success-100);
+    --heroui-colors-success-200: var(--color-success-200);
+    --heroui-colors-success-300: var(--color-success-300);
+    --heroui-colors-success-400: var(--color-success-400);
+    --heroui-colors-success-500: var(--color-success-500);
+    --heroui-colors-success-600: var(--color-success-600);
+    --heroui-colors-success-700: var(--color-success-700);
+    --heroui-colors-success-800: var(--color-success-800);
+    --heroui-colors-success-900: var(--color-success-900);
+    --heroui-colors-success-foreground: var(--color-success-foreground);
+
+    --heroui-colors-warning: var(--color-warning);
+    --heroui-colors-warning-50: var(--color-warning-50);
+    --heroui-colors-warning-100: var(--color-warning-100);
+    --heroui-colors-warning-200: var(--color-warning-200);
+    --heroui-colors-warning-300: var(--color-warning-300);
+    --heroui-colors-warning-400: var(--color-warning-400);
+    --heroui-colors-warning-500: var(--color-warning-500);
+    --heroui-colors-warning-600: var(--color-warning-600);
+    --heroui-colors-warning-700: var(--color-warning-700);
+    --heroui-colors-warning-800: var(--color-warning-800);
+    --heroui-colors-warning-900: var(--color-warning-900);
+    --heroui-colors-warning-foreground: var(--color-warning-foreground);
+
+    --heroui-colors-danger: var(--color-danger);
+    --heroui-colors-danger-50: var(--color-danger-50);
+    --heroui-colors-danger-100: var(--color-danger-100);
+    --heroui-colors-danger-200: var(--color-danger-200);
+    --heroui-colors-danger-300: var(--color-danger-300);
+    --heroui-colors-danger-400: var(--color-danger-400);
+    --heroui-colors-danger-500: var(--color-danger-500);
+    --heroui-colors-danger-600: var(--color-danger-600);
+    --heroui-colors-danger-700: var(--color-danger-700);
+    --heroui-colors-danger-800: var(--color-danger-800);
+    --heroui-colors-danger-900: var(--color-danger-900);
+    --heroui-colors-danger-foreground: var(--color-danger-foreground);
+
+    --heroui-colors-content1: var(--color-content1);
+    --heroui-colors-content1-foreground: var(--color-content1-foreground);
+    --heroui-colors-content2: var(--color-content2);
+    --heroui-colors-content2-foreground: var(--color-content2-foreground);
+    --heroui-colors-content3: var(--color-content3);
+    --heroui-colors-content3-foreground: var(--color-content3-foreground);
+    --heroui-colors-content4: var(--color-content4);
+    --heroui-colors-content4-foreground: var(--color-content4-foreground);
+
+    /* Compatibility with NextUI variable names */
+    --nextui-colors-background: var(--color-background);
+    --nextui-colors-foreground: var(--color-foreground);
+    --nextui-colors-primary: var(--color-primary);
+    --nextui-colors-primary-foreground: var(--color-primary-foreground);
+  }
+
+  .dark {
+    color-scheme: dark;
+    --color-background: #010b06;
+    --color-foreground: #99d2ad;
+    --color-overlay: #ffffff;
+    --color-focus: #66cc8a;
+
+    --color-default: #485248;
+    --color-default-50: #0e100e;
+    --color-default-100: #1d211d;
+    --color-default-200: #2b312b;
+    --color-default-300: #3a423a;
+    --color-default-400: #485248;
+    --color-default-500: #6d756d;
+    --color-default-600: #919791;
+    --color-default-700: #b6bab6;
+    --color-default-800: #dadcda;
+    --color-default-900: #ffffff;
+    --color-default-foreground: #ffffff;
+
+    --color-primary: #66cc8a;
+    --color-primary-50: #1f3d29;
+    --color-primary-100: #306142;
+    --color-primary-200: #42855a;
+    --color-primary-300: #54a872;
+    --color-primary-400: #66cc8a;
+    --color-primary-500: #81d59e;
+    --color-primary-600: #9cdeb3;
+    --color-primary-700: #b6e7c7;
+    --color-primary-800: #d1f0dc;
+    --color-primary-900: #ecf9f0;
+    --color-primary-foreground: #000000;
+
+    --color-secondary: #377cfb;
+    --color-secondary-50: #11254b;
+    --color-secondary-100: #1a3b77;
+    --color-secondary-200: #2451a3;
+    --color-secondary-300: #2d66cf;
+    --color-secondary-400: #377cfb;
+    --color-secondary-500: #5a93fc;
+    --color-secondary-600: #7daafc;
+    --color-secondary-700: #a0c1fd;
+    --color-secondary-800: #c3d8fe;
+    --color-secondary-900: #e6efff;
+    --color-secondary-foreground: #000000;
+
+    --color-success: #00a96e;
+    --color-success-50: #003321;
+    --color-success-100: #005034;
+    --color-success-200: #006e48;
+    --color-success-300: #008b5b;
+    --color-success-400: #00a96e;
+    --color-success-500: #2db887;
+    --color-success-600: #59c7a1;
+    --color-success-700: #86d6ba;
+    --color-success-800: #b3e5d4;
+    --color-success-900: #dff4ed;
+    --color-success-foreground: #000000;
+
+    --color-warning: #ffbe00;
+    --color-warning-50: #4d3900;
+    --color-warning-100: #795a00;
+    --color-warning-200: #a67c00;
+    --color-warning-300: #d29d00;
+    --color-warning-400: #ffbe00;
+    --color-warning-500: #ffc92d;
+    --color-warning-600: #ffd559;
+    --color-warning-700: #ffe086;
+    --color-warning-800: #ffecb3;
+    --color-warning-900: #fff7df;
+    --color-warning-foreground: #000000;
+
+    --color-danger: #ff5861;
+    --color-danger-50: #4d1a1d;
+    --color-danger-100: #792a2e;
+    --color-danger-200: #a6393f;
+    --color-danger-300: #d24950;
+    --color-danger-400: #ff5861;
+    --color-danger-500: #ff757d;
+    --color-danger-600: #ff9298;
+    --color-danger-700: #ffb0b4;
+    --color-danger-800: #ffcdd0;
+    --color-danger-900: #ffeaeb;
+    --color-danger-foreground: #000000;
+
+    --color-content1: #14291c;
+    --color-content1-foreground: #ffffff;
+    --color-content2: #295237;
+    --color-content2-foreground: #ffffff;
+    --color-content3: #3d7a53;
+    --color-content3-foreground: #ffffff;
+    --color-content4: #52a36e;
+    --color-content4-foreground: #000000;
+
+    --heroui-colors-background: var(--color-background);
+    --heroui-colors-foreground: var(--color-foreground);
+    --heroui-colors-overlay: var(--color-overlay);
+    --heroui-colors-focus: var(--color-focus);
+
+    --heroui-colors-default: var(--color-default);
+    --heroui-colors-default-50: var(--color-default-50);
+    --heroui-colors-default-100: var(--color-default-100);
+    --heroui-colors-default-200: var(--color-default-200);
+    --heroui-colors-default-300: var(--color-default-300);
+    --heroui-colors-default-400: var(--color-default-400);
+    --heroui-colors-default-500: var(--color-default-500);
+    --heroui-colors-default-600: var(--color-default-600);
+    --heroui-colors-default-700: var(--color-default-700);
+    --heroui-colors-default-800: var(--color-default-800);
+    --heroui-colors-default-900: var(--color-default-900);
+    --heroui-colors-default-foreground: var(--color-default-foreground);
+
+    --heroui-colors-primary: var(--color-primary);
+    --heroui-colors-primary-50: var(--color-primary-50);
+    --heroui-colors-primary-100: var(--color-primary-100);
+    --heroui-colors-primary-200: var(--color-primary-200);
+    --heroui-colors-primary-300: var(--color-primary-300);
+    --heroui-colors-primary-400: var(--color-primary-400);
+    --heroui-colors-primary-500: var(--color-primary-500);
+    --heroui-colors-primary-600: var(--color-primary-600);
+    --heroui-colors-primary-700: var(--color-primary-700);
+    --heroui-colors-primary-800: var(--color-primary-800);
+    --heroui-colors-primary-900: var(--color-primary-900);
+    --heroui-colors-primary-foreground: var(--color-primary-foreground);
+
+    --heroui-colors-secondary: var(--color-secondary);
+    --heroui-colors-secondary-50: var(--color-secondary-50);
+    --heroui-colors-secondary-100: var(--color-secondary-100);
+    --heroui-colors-secondary-200: var(--color-secondary-200);
+    --heroui-colors-secondary-300: var(--color-secondary-300);
+    --heroui-colors-secondary-400: var(--color-secondary-400);
+    --heroui-colors-secondary-500: var(--color-secondary-500);
+    --heroui-colors-secondary-600: var(--color-secondary-600);
+    --heroui-colors-secondary-700: var(--color-secondary-700);
+    --heroui-colors-secondary-800: var(--color-secondary-800);
+    --heroui-colors-secondary-900: var(--color-secondary-900);
+    --heroui-colors-secondary-foreground: var(--color-secondary-foreground);
+
+    --heroui-colors-success: var(--color-success);
+    --heroui-colors-success-50: var(--color-success-50);
+    --heroui-colors-success-100: var(--color-success-100);
+    --heroui-colors-success-200: var(--color-success-200);
+    --heroui-colors-success-300: var(--color-success-300);
+    --heroui-colors-success-400: var(--color-success-400);
+    --heroui-colors-success-500: var(--color-success-500);
+    --heroui-colors-success-600: var(--color-success-600);
+    --heroui-colors-success-700: var(--color-success-700);
+    --heroui-colors-success-800: var(--color-success-800);
+    --heroui-colors-success-900: var(--color-success-900);
+    --heroui-colors-success-foreground: var(--color-success-foreground);
+
+    --heroui-colors-warning: var(--color-warning);
+    --heroui-colors-warning-50: var(--color-warning-50);
+    --heroui-colors-warning-100: var(--color-warning-100);
+    --heroui-colors-warning-200: var(--color-warning-200);
+    --heroui-colors-warning-300: var(--color-warning-300);
+    --heroui-colors-warning-400: var(--color-warning-400);
+    --heroui-colors-warning-500: var(--color-warning-500);
+    --heroui-colors-warning-600: var(--color-warning-600);
+    --heroui-colors-warning-700: var(--color-warning-700);
+    --heroui-colors-warning-800: var(--color-warning-800);
+    --heroui-colors-warning-900: var(--color-warning-900);
+    --heroui-colors-warning-foreground: var(--color-warning-foreground);
+
+    --heroui-colors-danger: var(--color-danger);
+    --heroui-colors-danger-50: var(--color-danger-50);
+    --heroui-colors-danger-100: var(--color-danger-100);
+    --heroui-colors-danger-200: var(--color-danger-200);
+    --heroui-colors-danger-300: var(--color-danger-300);
+    --heroui-colors-danger-400: var(--color-danger-400);
+    --heroui-colors-danger-500: var(--color-danger-500);
+    --heroui-colors-danger-600: var(--color-danger-600);
+    --heroui-colors-danger-700: var(--color-danger-700);
+    --heroui-colors-danger-800: var(--color-danger-800);
+    --heroui-colors-danger-900: var(--color-danger-900);
+    --heroui-colors-danger-foreground: var(--color-danger-foreground);
+
+    --heroui-colors-content1: var(--color-content1);
+    --heroui-colors-content1-foreground: var(--color-content1-foreground);
+    --heroui-colors-content2: var(--color-content2);
+    --heroui-colors-content2-foreground: var(--color-content2-foreground);
+    --heroui-colors-content3: var(--color-content3);
+    --heroui-colors-content3-foreground: var(--color-content3-foreground);
+    --heroui-colors-content4: var(--color-content4);
+    --heroui-colors-content4-foreground: var(--color-content4-foreground);
+
+    --nextui-colors-background: var(--color-background);
+    --nextui-colors-foreground: var(--color-foreground);
+    --nextui-colors-primary: var(--color-primary);
+    --nextui-colors-primary-foreground: var(--color-primary-foreground);
+  }
+
   *,
   ::after,
   ::before,
   ::backdrop,
   ::file-selector-button {
     border-color: var(--color-gray-200, currentColor);
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
   }
 }
