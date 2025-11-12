@@ -243,9 +243,18 @@ export default function AdminPage() {
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-background via-default-100/15 to-default-200/20 px-6 py-12">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-24 top-20 h-96 w-96 rounded-full bg-primary/15 blur-3xl" />
-        <div className="absolute right-10 top-1/3 h-72 w-72 rounded-full bg-secondary/10 blur-3xl" />
-        <div className="absolute bottom-10 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute -left-24 top-20 h-96 w-96">
+          <div className="h-full w-full rounded-full bg-primary/15 blur-3xl animate-blob-slow" />
+        </div>
+        <div className="absolute right-10 top-1/3 h-72 w-72">
+          <div className="h-full w-full rounded-full bg-secondary/12 blur-3xl animate-blob-reverse animation-delay-2000" />
+        </div>
+        <div className="absolute bottom-10 left-1/2 h-80 w-80 -translate-x-1/2">
+          <div className="h-full w-full rounded-full bg-primary/12 blur-3xl animate-blob-medium animation-delay-4000" />
+        </div>
+        <div className="absolute -bottom-24 right-1/4 h-64 w-64">
+          <div className="h-full w-full rounded-full bg-secondary/14 blur-[120px] animate-blob-reverse animation-delay-2000" />
+        </div>
       </div>
 
       <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-8">
