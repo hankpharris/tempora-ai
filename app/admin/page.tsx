@@ -20,6 +20,7 @@ import { useSession } from "next-auth/react"
 import { useCallback, useEffect, useState } from "react"
 import { EditModeToggle } from "../../components/EditModeToggle"
 import { LogoutButton } from "../../components/LogoutButton"
+import { MovingBlob } from "../../components/MovingBlob"
 
 type DatabaseRecord = Record<string, unknown>
 
@@ -243,18 +244,41 @@ export default function AdminPage() {
   return (
     <div className="relative min-h-screen bg-gradient-to-br from-background via-default-100/15 to-default-200/20 px-6 py-12">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -left-24 top-20 h-96 w-96">
-          <div className="h-full w-full rounded-full bg-primary/15 blur-3xl animate-blob-slow" />
-        </div>
-        <div className="absolute right-10 top-1/3 h-72 w-72">
-          <div className="h-full w-full rounded-full bg-secondary/12 blur-3xl animate-blob-reverse animation-delay-2000" />
-        </div>
-        <div className="absolute bottom-10 left-1/2 h-80 w-80 -translate-x-1/2">
-          <div className="h-full w-full rounded-full bg-primary/12 blur-3xl animate-blob-medium animation-delay-4000" />
-        </div>
-        <div className="absolute -bottom-24 right-1/4 h-64 w-64">
-          <div className="h-full w-full rounded-full bg-secondary/14 blur-[120px] animate-blob-reverse animation-delay-2000" />
-        </div>
+        <MovingBlob
+          size={420}
+          speed={46}
+          overshoot={220}
+          colorClass="bg-primary/16"
+          blurClass="blur-3xl"
+          className="mix-blend-screen"
+        />
+        <MovingBlob
+          size={360}
+          speed={60}
+          delay={1300}
+          overshoot={180}
+          colorClass="bg-secondary/16"
+          blurClass="blur-3xl"
+          className="mix-blend-screen"
+        />
+        <MovingBlob
+          size={500}
+          speed={40}
+          delay={2400}
+          overshoot={240}
+          colorClass="bg-primary/12"
+          blurClass="blur-[130px]"
+          className="hidden md:block mix-blend-screen"
+        />
+        <MovingBlob
+          size={300}
+          speed={70}
+          delay={3200}
+          overshoot={160}
+          colorClass="bg-secondary/18"
+          blurClass="blur-[110px]"
+          className="mix-blend-screen"
+        />
       </div>
 
       <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-8">
