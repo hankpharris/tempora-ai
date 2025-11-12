@@ -14,6 +14,7 @@ datasource db {
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
+  password      String?   // Encrypted password for credentials auth
   emailVerified DateTime?
   name          String?
   image         String?
