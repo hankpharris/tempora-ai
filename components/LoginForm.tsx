@@ -79,8 +79,9 @@ export function LoginForm() {
                 placeholder="you@tempora.ai"
                 classNames={{
                   inputWrapper:
-                    "bg-content1/80 border border-primary/30 hover:border-primary/50 focus-within:border-primary shadow-sm",
-                  input: "text-base text-foreground",
+                    "bg-content1/80 border border-primary/30 hover:border-primary/50 focus-within:border-primary shadow-sm ps-1",
+                  innerWrapper: "gap-3",
+                  input: "text-base text-foreground pl-1.5 pr-2",
                 }}
                 startContent={
                   <svg
@@ -123,8 +124,9 @@ export function LoginForm() {
                 placeholder="Enter your secure key"
                 classNames={{
                   inputWrapper:
-                    "bg-content1/80 border border-primary/30 hover:border-primary/50 focus-within:border-primary shadow-sm",
-                  input: "text-base text-foreground",
+                    "bg-content1/80 border border-primary/30 hover:border-primary/50 focus-within:border-primary shadow-sm ps-1",
+                  innerWrapper: "gap-3",
+                  input: "text-base text-foreground pl-1.5 pr-2",
                 }}
                 startContent={
                   <svg
@@ -152,7 +154,8 @@ export function LoginForm() {
               color="primary"
               size="lg"
               isLoading={isLoading}
-              className="w-full font-semibold shadow-lg shadow-primary/30"
+            radius="lg"
+            className="w-full rounded-2xl font-semibold shadow-lg shadow-primary/30"
             >
               Sign In
             </Button>
