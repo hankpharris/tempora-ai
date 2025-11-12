@@ -5,9 +5,8 @@ import {
   Card,
   CardBody,
   CardHeader,
+  Divider,
   Input,
-  Select,
-  SelectItem,
   Spinner,
   Table,
   TableBody,
@@ -15,6 +14,8 @@ import {
   TableColumn,
   TableHeader,
   TableRow,
+  Tab,
+  Tabs,
 } from "@heroui/react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
@@ -54,14 +55,11 @@ export default function AdminPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      console.log("Fetching admin data from /api/admin/data")
       setLoading(true)
       const response = await fetch("/api/admin/data")
-      console.log("Response status:", response.status, response.statusText)
       
       if (response.ok) {
         const result = (await response.json()) as TableData
-        console.log("Data received:", result)
         setData(result)
       } else {
         const errorText = await response.text()
@@ -75,22 +73,16 @@ export default function AdminPage() {
   }, [])
 
   useEffect(() => {
-    console.log("Admin page useEffect - status:", status, "session:", session)
-    
     if (status === "unauthenticated") {
-      console.log("Unauthenticated, redirecting to login")
       router.push("/login")
       return
     }
 
     if (status === "authenticated") {
-      console.log("Authenticated, checking admin type:", session?.user?.type)
       if (session?.user?.type !== "ADMIN") {
-        console.log("Not admin, redirecting to login")
         router.push("/login")
         return
       }
-      console.log("Admin confirmed, fetching data...")
       void fetchData()
     }
   }, [status, session?.user?.type, router, fetchData])
@@ -146,7 +138,7 @@ export default function AdminPage() {
 
     if (isEditing) {
       return (
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Input
             size="sm"
             type={isDateField ? "datetime-local" : "text"}
@@ -170,9 +162,10 @@ export default function AdminPage() {
     if (isDateField && cellValue) {
       try {
         const date = typeof cellValue === "string" ? new Date(cellValue) : cellValue
-        displayValue = date instanceof Date && !isNaN(date.getTime()) 
-          ? date.toLocaleString() 
-          : String(cellValue || "")
+        displayValue =
+          date instanceof Date && !isNaN(date.getTime())
+            ? date.toLocaleString()
+            : String(cellValue || "")
       } catch {
         displayValue = String(cellValue || "")
       }
@@ -180,22 +173,32 @@ export default function AdminPage() {
       displayValue = String(cellValue ?? "")
     }
 
+    const formattedValue = displayValue.trim() === "" ? "—" : displayValue
+
     return (
       <span
-        onClick={() => handleCellClick(table, rowId, columnKey, cellValue)}
-        className={isEditMode ? "cursor-pointer hover:bg-default-100 rounded px-2 py-1" : ""}
+        onClick={() => {
+          if (isEditMode) {
+            handleCellClick(table, rowId, columnKey, cellValue)
+          }
+        }}
+        className={`block min-h-[1.75rem] rounded-xl px-1.5 py-1 text-sm text-foreground/90 transition-colors ${
+          isEditMode
+            ? "cursor-pointer hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            : ""
+        }`}
       >
-        {displayValue}
+        {formattedValue}
       </span>
     )
   }
 
   if (status === "loading") {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <Spinner size="lg" />
-          <p className="mt-4 text-gray-600">Loading session...</p>
+          <Spinner size="lg" color="primary" />
+          <p className="mt-4 text-sm text-default-500">Loading session...</p>
         </div>
       </div>
     )
@@ -203,10 +206,10 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <Spinner size="lg" />
-          <p className="mt-4 text-gray-600">Loading data...</p>
+          <Spinner size="lg" color="primary" />
+          <p className="mt-4 text-sm text-default-500">Loading data...</p>
         </div>
       </div>
     )
@@ -222,75 +225,136 @@ export default function AdminPage() {
   const currentData = data[activeTable] || []
   const columns = tableColumns[activeTable] || []
 
+  const tableOptions: { key: keyof TableData; label: string; description: string }[] = [
+    { key: "users", label: "Users", description: "Accounts & roles" },
+    { key: "friendships", label: "Friendships", description: "Social graph" },
+    { key: "schedules", label: "Schedules", description: "Planning scenes" },
+    { key: "events", label: "Events", description: "Timeline entries" },
+  ]
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-6">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Admin Panel</h1>
+    <div className="relative min-h-screen bg-gradient-to-br from-background via-default-100/15 to-default-200/20 px-6 py-12">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute -left-24 top-20 h-96 w-96 rounded-full bg-primary/15 blur-3xl" />
+        <div className="absolute right-10 top-1/3 h-72 w-72 rounded-full bg-secondary/10 blur-3xl" />
+        <div className="absolute bottom-10 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-primary/10 blur-3xl" />
+      </div>
+
+      <div className="relative z-10 mx-auto flex max-w-7xl flex-col gap-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs uppercase tracking-[0.35em] text-primary/80">Operations</p>
+            <h1 className="mt-1 text-4xl font-semibold text-foreground">Admin Control Center</h1>
+            <p className="mt-2 max-w-2xl text-sm text-default-500">
+              Monitor and fine-tune Tempora datasets with inline editing, responsive insights, and a
+              spreadsheet-inspired layout that keeps relational context clear.
+            </p>
+          </div>
           <div className="flex items-center gap-4">
             <EditModeToggle isEditMode={isEditMode} onToggle={setIsEditMode} />
             <LogoutButton />
           </div>
         </div>
-        
-        <div className="mb-4 text-sm text-gray-600">
-          Debug: Status: {status}, Loading: {loading ? "true" : "false"}, Data count: {currentData.length}
-        </div>
 
-        <div className="mb-4">
-          <Select
-            label="Select Table"
-            selectedKeys={[activeTable]}
-            onSelectionChange={(keys) => {
-              const selected = Array.from(keys)[0] as keyof TableData
-              if (selected) {
+        <Card className="rounded-3xl border border-primary/15 bg-content1/80 shadow-2xl backdrop-blur-xl dark:border-primary/25 dark:bg-content1/60">
+          <CardHeader className="flex flex-col gap-2 px-5 py-5 md:flex-row md:items-end md:justify-between md:px-7 md:py-7">
+            <div>
+              <p className="text-xs uppercase tracking-[0.35em] text-primary/70">Data overview</p>
+              <h2 className="text-2xl font-semibold capitalize text-foreground">{activeTable}</h2>
+            </div>
+            <p className="text-sm text-default-500">
+              {currentData.length} record{currentData.length === 1 ? "" : "s"} loaded
+            </p>
+          </CardHeader>
+          <Divider />
+          <CardBody className="flex flex-col gap-6 px-5 pb-7 pt-2 md:px-7">
+            <Tabs
+              aria-label="Data collections"
+              color="primary"
+              selectedKey={activeTable}
+              onSelectionChange={(key) => {
+                const selected = key as keyof TableData
                 setActiveTable(selected)
                 setEditingCell(null)
-              }
-            }}
-            className="max-w-xs"
-          >
-            <SelectItem key="users">Users</SelectItem>
-            <SelectItem key="friendships">Friendships</SelectItem>
-            <SelectItem key="schedules">Schedules</SelectItem>
-            <SelectItem key="events">Events</SelectItem>
-          </Select>
-        </div>
+              }}
+              className="max-w-full overflow-x-auto"
+              variant="underlined"
+            >
+              {tableOptions.map((tab) => (
+                <Tab
+                  key={tab.key}
+                  title={
+                    <div className="flex flex-col items-start gap-1 text-left">
+                      <span className="text-sm font-semibold capitalize text-foreground">
+                        {tab.label}
+                      </span>
+                      <span className="text-[11px] uppercase tracking-[0.25em] text-default-500">
+                        {tab.description}
+                      </span>
+                    </div>
+                  }
+                />
+              ))}
+            </Tabs>
 
-        <Card>
-          <CardHeader>
-            <h2 className="text-xl font-semibold capitalize">{activeTable}</h2>
-          </CardHeader>
-          <CardBody>
             {currentData.length === 0 ? (
-              <div className="py-8 text-center text-gray-500">
+              <div className="rounded-3xl border border-default/20 bg-content1/70 px-6 py-10 text-center text-sm text-default-500 md:px-10">
                 No data available for {activeTable}
               </div>
             ) : (
-              <Table aria-label={`${activeTable} table`}>
-                <TableHeader>
-                  {columns.map((column) => (
-                    <TableColumn key={column}>{column}</TableColumn>
-                  ))}
-                </TableHeader>
-                <TableBody emptyContent={`No ${activeTable} found`}>
-                  {currentData.map((item) => {
-                    const rowId =
-                      activeTable === "friendships"
-                        ? `${item.user_id1 as string}-${item.user_id2 as string}`
-                        : (item.id as string) || `${item.user_id1 as string}-${item.user_id2 as string}`
-                    return (
-                      <TableRow key={rowId}>
-                        {columns.map((column) => (
-                          <TableCell key={`${rowId}-${column}`}>
-                            {renderCell(item, column, activeTable)}
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
+              <div className="overflow-hidden rounded-3xl border border-default/20 shadow-inner">
+                <div className="relative overflow-auto">
+                  <Table
+                    aria-label={`${activeTable} table`}
+                    removeWrapper
+                    classNames={{
+                      base: "min-w-full",
+                      table: "min-w-full border-collapse",
+                      thead: "bg-transparent",
+                      th: "bg-default-100/80 text-[12px] font-semibold uppercase tracking-[0.25em] text-default-500 first:rounded-tl-3xl last:rounded-tr-3xl",
+                      tbody: "align-top",
+                      td: "border-b-0 bg-transparent px-1 py-0",
+                      tr: "transition-colors",
+                    }}
+                  >
+                    <TableHeader>
+                      {columns.map((column) => (
+                        <TableColumn key={column} className="px-5 py-4">
+                          {column}
+                        </TableColumn>
+                      ))}
+                    </TableHeader>
+                    <TableBody emptyContent={`No ${activeTable} found`}>
+                      {currentData.map((item, rowIndex) => {
+                        const rowId =
+                          activeTable === "friendships"
+                            ? `${item.user_id1 as string}-${item.user_id2 as string}`
+                            : (item.id as string) ||
+                              `${item.user_id1 as string}-${item.user_id2 as string}`
+                        return (
+                          <TableRow key={rowId}>
+                            {columns.map((column) => (
+                              <TableCell key={`${rowId}-${column}`}>
+                                <div
+                                  className={`rounded-2xl border border-default/20 bg-content1/85 px-3 py-2.5 shadow-sm transition-all ${
+                                    rowIndex === 0 ? "" : "mt-2"
+                                  } ${
+                                    isEditMode
+                                      ? "hover:border-primary/40 hover:bg-primary/10"
+                                      : ""
+                                  }`}
+                                >
+                                  {renderCell(item, column, activeTable)}
+                                </div>
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
             )}
           </CardBody>
         </Card>
