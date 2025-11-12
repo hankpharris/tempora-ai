@@ -4,6 +4,7 @@ import { Button, Card, CardBody, CardHeader, Input } from "@heroui/react"
 import { useRouter } from "next/navigation"
 import { signIn } from "next-auth/react"
 import { useState } from "react"
+import { MovingBlob } from "./MovingBlob"
 
 export function LoginForm() {
   const router = useRouter()
@@ -43,15 +44,32 @@ export function LoginForm() {
   return (
     <div className="relative flex min-h-[calc(100vh-4rem)] items-center justify-center bg-gradient-to-br from-primary-50/60 via-default-100/60 to-background p-6 transition-colors">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-32 left-1/2 h-72 w-72 -translate-x-1/2">
-          <div className="h-full w-full rounded-full bg-primary/30 blur-3xl animate-blob-slow" />
-        </div>
-        <div className="absolute bottom-10 left-10 h-56 w-56">
-          <div className="h-full w-full rounded-full bg-secondary/25 blur-3xl animate-blob-reverse animation-delay-2000" />
-        </div>
-        <div className="absolute -bottom-20 right-6 h-64 w-64">
-          <div className="h-full w-full rounded-full bg-primary/20 blur-[110px] animate-blob-medium animation-delay-4000" />
-        </div>
+        <MovingBlob
+          size={360}
+          speed={52}
+          overshoot={180}
+          colorClass="bg-primary/28"
+          blurClass="blur-3xl"
+          className="mix-blend-screen"
+        />
+        <MovingBlob
+          size={280}
+          speed={64}
+          delay={1500}
+          overshoot={140}
+          colorClass="bg-secondary/20"
+          blurClass="blur-3xl"
+          className="mix-blend-screen"
+        />
+        <MovingBlob
+          size={420}
+          speed={48}
+          delay={2600}
+          overshoot={220}
+          colorClass="bg-primary/18"
+          blurClass="blur-[120px]"
+          className="hidden sm:block mix-blend-screen"
+        />
       </div>
 
       <Card className="relative z-10 w-full max-w-xl rounded-3xl border border-primary/20 bg-content1/90 shadow-2xl backdrop-blur-xl dark:border-primary/30 dark:bg-content1/80">
