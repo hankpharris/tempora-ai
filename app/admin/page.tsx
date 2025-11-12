@@ -14,8 +14,6 @@ import {
   TableColumn,
   TableHeader,
   TableRow,
-  Tab,
-  Tabs,
 } from "@heroui/react"
 import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
@@ -149,8 +147,18 @@ export default function AdminPage() {
               if (e.key === "Escape") setEditingCell(null)
             }}
             autoFocus
+            classNames={{
+              inputWrapper: "ps-2 pe-2",
+              input: "pl-1.5 pr-1.5 text-sm text-foreground",
+            }}
           />
-          <Button size="sm" color="primary" onPress={handleSave}>
+          <Button
+            size="sm"
+            color="primary"
+            radius="md"
+            className="rounded-xl px-4"
+            onPress={handleSave}
+          >
             Save
           </Button>
         </div>
@@ -268,34 +276,37 @@ export default function AdminPage() {
           </CardHeader>
           <Divider />
           <CardBody className="flex flex-col gap-6 px-5 pb-7 pt-2 md:px-7">
-            <Tabs
-              aria-label="Data collections"
-              color="primary"
-              selectedKey={activeTable}
-              onSelectionChange={(key) => {
-                const selected = key as keyof TableData
-                setActiveTable(selected)
-                setEditingCell(null)
-              }}
-              className="max-w-full overflow-x-auto"
-              variant="underlined"
-            >
-              {tableOptions.map((tab) => (
-                <Tab
-                  key={tab.key}
-                  title={
-                    <div className="flex flex-col items-start gap-1 text-left">
+            <div className="flex flex-wrap gap-3">
+              {tableOptions.map((tab) => {
+                const isSelected = activeTable === tab.key
+                return (
+                  <Button
+                    key={tab.key}
+                    variant={isSelected ? "solid" : "light"}
+                    color="primary"
+                    radius="md"
+                    className={`h-auto rounded-lg border border-transparent px-4 py-3 text-left transition-all duration-200 ${
+                      isSelected
+                        ? "border-primary/50 bg-primary/20"
+                        : "border-primary/15 hover:border-primary/30"
+                    }`}
+                    onPress={() => {
+                      setActiveTable(tab.key)
+                      setEditingCell(null)
+                    }}
+                  >
+                    <span className="flex flex-col items-start gap-1">
                       <span className="text-sm font-semibold capitalize text-foreground">
                         {tab.label}
                       </span>
                       <span className="text-[11px] uppercase tracking-[0.25em] text-default-500">
                         {tab.description}
                       </span>
-                    </div>
-                  }
-                />
-              ))}
-            </Tabs>
+                    </span>
+                  </Button>
+                )
+              })}
+            </div>
 
             {currentData.length === 0 ? (
               <div className="rounded-3xl border border-default/20 bg-content1/70 px-6 py-10 text-center text-sm text-default-500 md:px-10">
