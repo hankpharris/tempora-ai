@@ -477,12 +477,13 @@ export default async function CalendarPage() {
 }
 
 function createScheduleColorAssigner() {
-  const palette = COLOR_TOKENS
+  const palette: ColorToken[] = [...COLOR_TOKENS]
   const lookup = new Map<string, ColorToken>()
   let index = 0
   return (scheduleId: string): ColorToken => {
     if (!lookup.has(scheduleId)) {
-      lookup.set(scheduleId, palette[index % palette.length])
+      const color = palette[index % palette.length] ?? "primary"
+      lookup.set(scheduleId, color)
       index += 1
     }
     return lookup.get(scheduleId) ?? "primary"
@@ -535,9 +536,9 @@ function groupEventsByDate(events: NormalizedEvent[]) {
     }
   }
 
-  for (const bucket of map.values()) {
+  map.forEach((bucket) => {
     bucket.sort((a, b) => a.start.getTime() - b.start.getTime())
-  }
+  })
 
   return map
 }
@@ -593,8 +594,8 @@ function buildWeekDays(anchor: Date, eventsByDate: Map<string, NormalizedEvent[]
 
 function formatWeekRangeLabel(week: WeekDayColumn[]) {
   if (week.length === 0) return ""
-  const first = week[0].date
-  const last = week[week.length - 1].date
+  const first = week.at(0)?.date ?? new Date()
+  const last = week.at(-1)?.date ?? first
   return `${MONTH_DAY_FORMATTER.format(first)} – ${MONTH_DAY_FORMATTER.format(last)}`
 }
 

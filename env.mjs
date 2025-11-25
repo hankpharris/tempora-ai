@@ -11,6 +11,7 @@ export const env = createEnv({
     // Use STACK_SECRET_SERVER_KEY from NeonDB Stack Auth, fallback to AUTH_SECRET
     AUTH_SECRET: z.string().min(1),
     AUTH_URL: z.string().url().optional(),
+    OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required to use the chatbot"),
     // NeonDB Stack Auth variables
     STACK_SECRET_SERVER_KEY: z.string().optional(),
     NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: z.string().optional(),
@@ -32,6 +33,7 @@ export const env = createEnv({
         )
       })(),
     AUTH_URL: process.env.AUTH_URL,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     STACK_SECRET_SERVER_KEY: process.env.STACK_SECRET_SERVER_KEY,
     NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY,
   },
