@@ -1,105 +1,122 @@
 
-# [Next.js Enterprise Boilerplate](https://blazity.com/open-source/nextjs-enterprise-boilerplate) 
+## Tempora AI Calendar
 
-A production-ready template for building enterprise applications with Next.js. This boilerplate provides a solid foundation with carefully selected technologies and ready-to-go infrastructure to help you develop high-quality applications efficiently.
+Tempora is an AI-assisted calendar and scheduling app built on Next.js.  
+It combines a rich multi-view calendar, an operations-ready admin panel, and an AI “copilot” that can inspect and modify a user’s schedules.
 
-## Motivation
+---
 
-While most Next.js boilerplates focus on individual developer needs with excessive complexity, **next-enterprise** prioritizes strategic simplicity for enterprise teams. It offers a streamlined foundation with high-impact features that maximize developer productivity and accelerate time-to-market for business-critical applications.
+### Getting started
 
-<a href="https://blazity.com/">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="/assets/blazity-logo-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="/assets/blazity-logo-light.svg">
-  <img alt="Logo" align="right" height="80" src="/assets/blazity-logo-light.svg">
-</picture>
-</a>
+#### Prerequisites
 
-> [!NOTE]
-> **Blazity** is a group of Next.js architects. We help organizations architect, optimize, and deploy high-performance Next.js applications at scale. Contact us at [contact@blazity.com](https://blazity.com) if you’d like to talk about your project.
+- **Node.js**: **>= 20.0.0**
+- **Package manager**: **pnpm** (recommended; this repo is configured for `pnpm@10`)
+- **Database**: Postgres instance reachable via `DATABASE_URL`
+- **Environment file**: The team-provided `.env` (or equivalent) for this project
+
+#### 1. Install dependencies
+
+From the project root:
+
+```bash
+pnpm install
+```
+
+#### 2. Configure environment variables
+
+You've been provided an environment file separately.
+
+- **Copy** the provided file to the project root as `.env` (or `.env.local` if you prefer)
 
 
+#### 3. Set up the database (only for a fresh instance)
 
-## Documentation
+If you are pointing at the **shared team database**, it has already been migrated and seeded — you can skip this step.
 
-There is a separate documentation that explains its functionality, highlights core business values and technical decisions, provides guidelines for future development, and includes architectural diagrams.
+If you are bringing up your **own local Postgres instance** for the first time, apply the Prisma schema and seed the initial data:
 
-We encourage you to [visit our docs (docs.blazity.com)](https://docs.blazity.com) to learn more
+```bash
+pnpm db:push    # or pnpm db:migrate if you are maintaining migrations
+pnpm db:seed
+```
 
-## Integrated features
+This will create the core tables (`users`, `friendships`, `schedules`, `events`) and seed sample data from `prisma/seed-data`.
 
-### Boilerplate
-With this template you will get all the boilerplate features included:
+#### 4. Run the development server
 
-* [Next.js 15](https://nextjs.org/) - Performance-optimized configuration using App Directory
-* [Tailwind CSS v4](https://tailwindcss.com/) - Utility-first CSS framework for efficient UI development
-* [ESlint 9](https://eslint.org/) and [Prettier](https://prettier.io/) - Code consistency and error prevention
-* [Corepack](https://github.com/nodejs/corepack) & [pnpm](https://pnpm.io/) as the package manager - For project management without compromises 
-* [Strict TypeScript](https://www.typescriptlang.org/) - Enhanced type safety with carefully crafted config and [ts-reset](https://github.com/total-typescript/ts-reset) library
-* [GitHub Actions](https://github.com/features/actions) - Pre-configured workflows including bundle size and performance tracking
-* Perfect Lighthouse score - Optimized performance metrics
-* [Bundle analyzer](https://www.npmjs.com/package/@next/bundle-analyzer) - Monitor and manage bundle size during development
-* Testing suite - [Vitest](https://vitest.dev), [React Testing Library](https://testing-library.com/react), and [Playwright](https://playwright.dev/) for comprehensive testing
-* [Storybook](https://storybook.js.org/) - Component development and documentation
-* Advanced testing - Smoke and acceptance testing capabilities
-* [Conventional commits](https://www.conventionalcommits.org/) - Standardized commit history management
-* [Observability](https://opentelemetry.io/) - Open Telemetry integration
-* [Absolute imports](https://nextjs.org/docs/advanced-features/module-path-aliases) - Simplified import structure
-* [Health checks](https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/) - Kubernetes-compatible monitoring
-* [Radix UI](https://www.radix-ui.com/) - Headless components for customization
-* [CVA](http://cva.style/) (Class Variance Authority) - Consistent design system creation
-* [Renovate BOT](https://www.whitesourcesoftware.com/free-developer-tools/renovate) - Automated dependency and security updates
-* [Patch-package](https://www.npmjs.com/package/patch-package) - External dependency fixes without compromises
-* Component relationship tools - Graph for managing coupling and cohesion
-* [Semantic Release](https://github.com/semantic-release/semantic-release) - Automated changelog generation
-* [T3 Env](https://env.t3.gg/) - Streamlined environment variable management
+```bash
+pnpm dev
+```
 
-### Infrastructure & deployments
+Then open `http://localhost:3000` in your browser.
 
-#### Vercel
+#### 5. Useful scripts
 
-Easily deploy your Next.js app with [Vercel](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=github&utm_campaign=next-enterprise) by clicking the button below:
+- **Lint**: `pnpm lint`
+- **Unit tests**: `pnpm test`
+- **E2E tests (Playwright)**: `pnpm e2e:headless`
+- **Storybook**: `pnpm storybook`
 
-[![Vercel](https://vercel.com/button)](https://vercel.com/new/git/external?repository-url=https://github.com/Blazity/next-enterprise)
+---
 
-#### Custom cloud infrastructure
+### Application overview
 
-**next-enterprise** offers dedicated infrastructure as code (IaC) solutions built with Terraform, designed specifically for deploying Next.js applications based on our extensive experience working with enterprise clients.
+- **Calendar experience**
+  - Authenticated users can review their schedules in rich **month, week, and day** views (`/calendar`).
+  - Events are grouped per schedule and color-coded; key statistics are surfaced (total events, active days, etc.).
 
-Learn more in our [documentation (docs.blazity.com)][docs] how to quickstart with the deployments using simple CLI.
+- **Tempora Copilot (AI assistant)**
+  - A docked chatbot that appears over the UI, labeled **“Tempora Copilot”**.
+  - Backed by **OpenAI gpt-5-mini** via LangChain tools.
+  - Can **list schedules, inspect events, create/update/delete events**, and summarize timelines for the **currently authenticated** user only.
 
-#### Available cloud providers and theirs features:
+- **Admin Control Center**
+  - Accessible only to authenticated users with `user.type === "ADMIN"`.
+  - Provides a **table-style CRUD view** for `users`, `friendships`, `schedules`, and `events`.
+  - Inline editing with an *Edit mode* toggle, backed by `/api/admin/data` and `/api/admin/update`.
 
-* **AWS (Amazon Web Services)**
-  * Automated provisioning of AWS infrastructure
-  * Scalable & secure setup using:
-     * VPC - Isolated network infrastructure
-     * Elastic Container Service (ECS) - Container orchestration
-     * Elastic Container Registry (ECR) - Container image storage
-     * Application Load Balancer - Traffic distribution
-     * S3 + CloudFront - Static asset delivery and caching
-     * AWS WAF - Web Application Firewall protection
-     * Redis Cluster - Caching
-  * CI/CD ready - Continuous integration and deployment pipeline
+- **Authentication**
+  - Uses **NextAuth v5 (Auth.js)** with Prisma-backed users.
+  - Protects the calendar, admin panel, and AI tools so they operate strictly on the signed-in user’s data.
 
-*... more coming soon*
+---
 
-### Team & maintenance
+### Tech stack
 
-**next-enterprise** is backed and maintained by [Blazity](https://blazity.com), providing up to date security features and integrated feature updates.
+- **Framework**
+  - **Next.js 15** (App Router, TypeScript, `app/` directory)
+  - **React 19**
 
-#### Active maintainers
+- **Styling & UI**
+  - **Tailwind CSS v4**
+  - **HeroUI** for application components (cards, tables, buttons, etc.)
+  - **Radix UI** primitives (tooltips, dialogs, etc.)
+  - Custom visual components for calendar experiences and animated backgrounds (`MovingBlob`, etc.)
 
-- Igor Klepacki ([neg4n](https://github.com/neg4n)) - Open Source Software Developer
-- Tomasz Czechowski ([tomaszczechowski](https://github.com/tomaszczechowski)) - Solutions Architect & DevOps
-- Jakub Jabłoński ([jjablonski-it](https://github.com/jjablonski-it)) - Head of Integrations
+- **Backend & data**
+  - **PostgreSQL** database
+  - **Prisma** ORM (`prisma/schema.prisma`, `prisma/seed.ts`)
+  - **Next.js Route Handlers** under `app/api/*` for auth, admin endpoints, health, and chatbot
 
-#### All-time contributors
-[bmstefanski](https://github.com/bmstefanski)
+- **Auth & security**
+  - **NextAuth v5** with Prisma adapter and session-based access control
+  - Role-aware admin surface (`USER` vs `ADMIN`)
 
-## License
+- **AI & automation**
+  - **OpenAI** via `@langchain/openai`
+  - **LangChain** tools to read/update schedules and events in a safe, validated way
+
+- **Tooling & quality**
+  - **TypeScript** with strict config and `ts-reset`
+  - **ESLint 9** + **Prettier**
+  - **Vitest** + **React Testing Library** for unit/component tests
+  - **Playwright** for end-to-end tests
+  - **Storybook 8** for isolated UI development
+  - **OpenTelemetry** integration for observability (via `@vercel/otel`)
+
+---
+
+### License
 
 MIT
-
-
-[docs]: https://docs.blazity.com/next-enterprise/deployments/enterprise-cli
