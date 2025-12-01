@@ -6,15 +6,41 @@ import { env } from "@/env.mjs"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
+const imageContentPartSchema = z.object({
+  type: z.literal("image_url"),
+  image_url: z.object({
+    url: z.string().min(1),
+  }),
+})
+
+const textContentPartSchema = z.object({
+  type: z.literal("text"),
+  text: z.string().min(1),
+})
+
+const contentPartSchema = z.union([textContentPartSchema, imageContentPartSchema])
+
+const messageContentSchema = z.union([
+  z.string().min(1),
+  z.array(contentPartSchema).min(1),
+])
+
+const userContextSchema = z.object({
+  timezone: z.string().min(1),
+  localTime: z.string().min(1),
+  locale: z.string().optional(),
+})
+
 const requestSchema = z.object({
   messages: z
     .array(
       z.object({
         role: z.enum(["system", "user", "assistant"]),
-        content: z.string().min(1),
+        content: messageContentSchema,
       }),
     )
     .min(1),
+  userContext: userContextSchema.optional(),
 })
 
 const isoDateSchema = z
@@ -38,19 +64,37 @@ const updateEventSchema = z
     }
   })
 
-const SYSTEM_PROMPT = `You are Tempora, a focused assistant that helps the currently authenticated user inspect and mutate their schedules and events.
+type UserContext = z.infer<typeof userContextSchema>
 
+function buildSystemPrompt(userContext?: UserContext) {
+  const contextInfo = userContext
+    ? `
+User Context:
+- Timezone: ${userContext.timezone}
+- Local time: ${userContext.localTime}
+- Locale: ${userContext.locale || "not specified"}
+
+When the user mentions times like "tomorrow at 3pm" or "next Monday", interpret them in the user's timezone (${userContext.timezone}) and convert to UTC for storage.`
+    : ""
+
+  return `You are Tempora, a focused assistant that helps the currently authenticated user inspect and mutate their schedules and events.
+${contextInfo}
 Rules:
 - Always call the provided tools when you need real data. Do not guess IDs or fabricate schedule contents.
 - List schedules before referencing one, and list the events in question before updating or deleting them.
 - For new events, confirm the target schedule and ensure the end time is after the start time.
 - When updating, explain what changed and mention the schedule name.
 - If the user has not supplied enough info (schedule, time window, etc.) ask a follow-up question.
-- Work in ISO-8601 timestamps (UTC) and keep explanations short. Finish with an actionable summary of what you did or still need.
+- Do not attempt to clarify facts already known with relative certainty. 
+    - For example if you check a users schedule list, and they only have one, you can assume this is what they are referring to when they ask about their schedule with reasonable certainty.
+- Work in ISO-8601 timestamps (UTC) internally but present times to the user in their local timezone when possible.
+- Keep explanations short. Finish with an actionable summary of what you did or still need.
 
-You are configured on gpt-5-mini in low reasoning mode with tool access.`
+You are configured on gpt-5-mini with tool access.`
+}
 
 type IncomingMessage = z.infer<typeof requestSchema>["messages"][number]
+type ContentPart = z.infer<typeof contentPartSchema>
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -61,9 +105,10 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json()
-    const { messages } = requestSchema.parse(body)
+    const { messages, userContext } = requestSchema.parse(body)
 
     const userId = session.user.id
+    const systemPrompt = buildSystemPrompt(userContext)
 
     const listSchedulesTool = tool(
       async () => {
@@ -259,30 +304,85 @@ export async function POST(req: Request) {
 
     const llm = new ChatOpenAI({
       model: "gpt-5-mini",
-      maxCompletionTokens: 800,
-      reasoning: { effort: "low" },
+      maxCompletionTokens: 4096,
       apiKey: env.OPENAI_API_KEY,
     })
 
     const agent = createAgent({
       model: llm,
       tools,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt,
+    })
+
+    const langChainMessages = mapToLangChainMessages(messages)
+
+    console.log("[chatbot] Invoking agent with", langChainMessages.length, "messages")
+    langChainMessages.forEach((msg, idx) => {
+      const msgType = msg._getType()
+      const hasImages = Array.isArray(msg.content) && 
+        msg.content.some((c: unknown) => typeof c === "object" && c !== null && "type" in c && (c as { type: string }).type === "image_url")
+      console.log(`[chatbot] Input[${idx}] type=${msgType}, hasImages=${hasImages}`)
     })
 
     const result = await agent.invoke({
-      messages: mapToLangChainMessages(messages),
+      messages: langChainMessages,
     })
 
-    const aiMessage = [...result.messages].reverse().find((message) => message._getType() === "ai") as
-      | AIMessage
-      | undefined
+    const allMessages = result.messages ?? []
+    console.log("[chatbot] Agent returned", allMessages.length, "messages")
+
+    // Log all messages for debugging
+    allMessages.forEach((msg: { _getType: () => string; content: unknown; tool_calls?: unknown[] }, idx: number) => {
+      const msgType = msg._getType()
+      const hasToolCalls = "tool_calls" in msg && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0
+      const contentType = typeof msg.content
+      const contentPreview = typeof msg.content === "string" 
+        ? msg.content.slice(0, 150) 
+        : Array.isArray(msg.content) 
+          ? `[array of ${msg.content.length} parts]`
+          : String(msg.content)
+      console.log(`[chatbot] Result[${idx}] type=${msgType}, hasToolCalls=${hasToolCalls}, contentType=${contentType}, content=${contentPreview}`)
+    })
+
+    // Find the last AI message that has actual text content (not just tool calls)
+    const aiMessagesWithContent = [...allMessages]
+      .reverse()
+      .filter((msg): msg is AIMessage => msg._getType() === "ai")
+      .filter((msg) => {
+        const content = normalizeContent(msg.content)
+        return content.length > 0
+      })
+
+    const aiMessage = aiMessagesWithContent[0]
 
     if (!aiMessage) {
+      // Fallback: get any AI message and check for tool_calls
+      const anyAiMessage = [...allMessages].reverse().find((msg) => msg._getType() === "ai") as AIMessage | undefined
+      
+      if (anyAiMessage) {
+        console.error("[chatbot] AI message found but has no text content")
+        console.error("[chatbot] AI message content:", JSON.stringify(anyAiMessage.content, null, 2))
+        console.error("[chatbot] AI message tool_calls:", JSON.stringify(anyAiMessage.tool_calls, null, 2))
+        console.error("[chatbot] AI message additional_kwargs:", JSON.stringify(anyAiMessage.additional_kwargs, null, 2))
+      } else {
+        console.error("[chatbot] No AI message found at all. Message types:", allMessages.map((m: { _getType: () => string }) => m._getType()))
+      }
+      
       throw new Error("The assistant was unable to craft a response.")
     }
 
-    const responseContent = normalizeContent(aiMessage.content) || "I could not generate a response."
+    const responseContent = normalizeContent(aiMessage.content)
+    console.log("[chatbot] Final response length:", responseContent.length)
+
+    if (!responseContent) {
+      console.error("[chatbot] normalizeContent returned empty for AI message:", JSON.stringify(aiMessage.content, null, 2))
+      return NextResponse.json({
+        message: {
+          role: "assistant",
+          content: "I processed your request but couldn't formulate a text response. Please try again.",
+        },
+      })
+    }
 
     return NextResponse.json({
       message: {
@@ -361,15 +461,30 @@ function serializeEvent(event: { id: string; scheduleId: string; start: Date; en
 
 function mapToLangChainMessages(messages: IncomingMessage[]) {
   return messages.map((message) => {
+    const content = normalizeMessageContent(message.content)
     switch (message.role) {
       case "system":
-        return new SystemMessage(message.content)
+        return new SystemMessage(typeof content === "string" ? content : extractTextFromContent(content))
       case "assistant":
-        return new AIMessage(message.content)
+        return new AIMessage(typeof content === "string" ? content : extractTextFromContent(content))
       default:
-        return new HumanMessage(message.content)
+        return new HumanMessage({ content })
     }
   })
+}
+
+function normalizeMessageContent(content: IncomingMessage["content"]): string | ContentPart[] {
+  if (typeof content === "string") {
+    return content
+  }
+  return content as ContentPart[]
+}
+
+function extractTextFromContent(parts: ContentPart[]): string {
+  return parts
+    .filter((part): part is z.infer<typeof textContentPartSchema> => part.type === "text")
+    .map((part) => part.text)
+    .join("\n")
 }
 
 type TextContentBlock = {
