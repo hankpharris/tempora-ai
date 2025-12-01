@@ -6,10 +6,28 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 type ChatRole = "assistant" | "user" | "system"
 
+type ImageContentPart = {
+  type: "image_url"
+  image_url: { url: string }
+}
+
+type TextContentPart = {
+  type: "text"
+  text: string
+}
+
+type ContentPart = TextContentPart | ImageContentPart
+
 type ChatMessage = {
   id: string
   role: ChatRole
-  content: string
+  content: string | ContentPart[]
+}
+
+type AttachedImage = {
+  id: string
+  dataUrl: string
+  name: string
 }
 
 const INITIAL_ASSISTANT_MESSAGE: ChatMessage = {
@@ -28,6 +46,37 @@ const roleLabel = (role: ChatRole) => {
   return "System"
 }
 
+function MessageContent({ content }: { content: string | ContentPart[] }) {
+  if (typeof content === "string") {
+    return <p className="whitespace-pre-wrap text-sm leading-relaxed">{content}</p>
+  }
+
+  return (
+    <div className="space-y-2">
+      {content.map((part, index) => {
+        if (part.type === "text") {
+          return (
+            <p key={index} className="whitespace-pre-wrap text-sm leading-relaxed">
+              {part.text}
+            </p>
+          )
+        }
+        if (part.type === "image_url") {
+          return (
+            <img
+              key={index}
+              src={part.image_url.url}
+              alt="Attached image"
+              className="max-h-48 rounded-lg border border-default/20"
+            />
+          )
+        }
+        return null
+      })}
+    </div>
+  )
+}
+
 export function ChatbotDock() {
   const { data: session, status } = useSession()
   const [isOpen, setIsOpen] = useState(false)
@@ -35,7 +84,9 @@ export function ChatbotDock() {
   const [input, setInput] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
   const endRef = useRef<HTMLDivElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const isAuthenticated = Boolean(session?.user?.id)
   const sessionLoading = status === "loading"
@@ -53,12 +104,54 @@ export function ChatbotDock() {
 
   const handleReset = useCallback(() => {
     setMessages([INITIAL_ASSISTANT_MESSAGE])
+    setAttachedImages([])
     setError(null)
+  }, [])
+
+  const handleImageSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files?.length) return
+
+    Array.from(files).forEach((file) => {
+      if (!file.type.startsWith("image/")) {
+        setError("Only image files are supported.")
+        return
+      }
+
+      if (file.size > 10 * 1024 * 1024) {
+        setError("Images must be under 10MB.")
+        return
+      }
+
+      const reader = new FileReader()
+      reader.onload = () => {
+        const dataUrl = reader.result as string
+        setAttachedImages((prev) => [
+          ...prev,
+          {
+            id: makeMessageId("img"),
+            dataUrl,
+            name: file.name,
+          },
+        ])
+      }
+      reader.readAsDataURL(file)
+    })
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }, [])
+
+  const removeImage = useCallback((imageId: string) => {
+    setAttachedImages((prev) => prev.filter((img) => img.id !== imageId))
   }, [])
 
   const sendMessage = useCallback(async () => {
     const trimmed = input.trim()
-    if (!trimmed || isSending) {
+    const hasImages = attachedImages.length > 0
+    
+    if ((!trimmed && !hasImages) || isSending) {
       return
     }
 
@@ -67,15 +160,37 @@ export function ChatbotDock() {
       return
     }
 
+    let messageContent: string | ContentPart[]
+    
+    if (hasImages) {
+      const contentParts: ContentPart[] = []
+      
+      if (trimmed) {
+        contentParts.push({ type: "text", text: trimmed })
+      }
+      
+      attachedImages.forEach((img) => {
+        contentParts.push({
+          type: "image_url",
+          image_url: { url: img.dataUrl },
+        })
+      })
+      
+      messageContent = contentParts
+    } else {
+      messageContent = trimmed
+    }
+
     const userMessage: ChatMessage = {
       id: makeMessageId("user"),
       role: "user",
-      content: trimmed,
+      content: messageContent,
     }
     const nextMessages = [...messages, userMessage]
 
     setMessages(nextMessages)
     setInput("")
+    setAttachedImages([])
     setIsSending(true)
     setError(null)
 
@@ -114,7 +229,7 @@ export function ChatbotDock() {
     } finally {
       setIsSending(false)
     }
-  }, [input, isSending, isAuthenticated, messages])
+  }, [input, isSending, isAuthenticated, messages, attachedImages])
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -187,7 +302,7 @@ export function ChatbotDock() {
                       <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-default-500">
                         {roleLabel(message.role)}
                       </p>
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+                      <MessageContent content={message.content} />
                     </div>
                   ))}
                   <div ref={endRef} />
@@ -209,11 +324,42 @@ export function ChatbotDock() {
                   </p>
                 ) : null}
                 <form className="space-y-3" onSubmit={handleSubmit}>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handleImageSelect}
+                    disabled={!isAuthenticated || sessionLoading}
+                  />
+                  
+                  {attachedImages.length > 0 && (
+                    <div className="flex flex-wrap gap-2 rounded-xl border border-default/20 bg-default-50/50 p-2">
+                      {attachedImages.map((img) => (
+                        <div key={img.id} className="group relative">
+                          <img
+                            src={img.dataUrl}
+                            alt={img.name}
+                            className="h-16 w-16 rounded-lg object-cover border border-default/30"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeImage(img.id)}
+                            className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-danger text-[10px] text-white opacity-0 shadow transition group-hover:opacity-100"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
                   <textarea
                     className="h-24 w-full rounded-2xl border border-default/30 bg-background px-3 py-2 text-sm text-foreground shadow-inner outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60"
                     placeholder={
                       isAuthenticated
-                        ? "Ask about your events, request a summary, or create something new..."
+                        ? "Ask about your events, request a summary, or attach an image..."
                         : "Sign in to start chatting."
                     }
                     value={input}
@@ -222,18 +368,29 @@ export function ChatbotDock() {
                     disabled={!isAuthenticated || sessionLoading}
                   />
                   <div className="flex items-center justify-between gap-3 text-xs">
-                    <button
-                      type="button"
-                      onClick={handleReset}
-                      disabled={messages.length <= 1}
-                      className="rounded-full border border-default/30 px-3 py-1 font-medium text-default-600 transition hover:bg-default-100/70 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Reset
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleReset}
+                        disabled={messages.length <= 1}
+                        className="rounded-full border border-default/30 px-3 py-1 font-medium text-default-600 transition hover:bg-default-100/70 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Reset
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={!isAuthenticated || isSending || sessionLoading}
+                        className="rounded-full border border-default/30 px-3 py-1 font-medium text-default-600 transition hover:bg-default-100/70 disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Attach image"
+                      >
+                        📷 Image
+                      </button>
+                    </div>
                     <button
                       type="submit"
                       disabled={
-                        !isAuthenticated || isSending || input.trim().length === 0 || sessionLoading
+                        !isAuthenticated || isSending || (input.trim().length === 0 && attachedImages.length === 0) || sessionLoading
                       }
                       className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                     >

@@ -6,12 +6,31 @@ import { env } from "@/env.mjs"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
+const imageContentPartSchema = z.object({
+  type: z.literal("image_url"),
+  image_url: z.object({
+    url: z.string().min(1),
+  }),
+})
+
+const textContentPartSchema = z.object({
+  type: z.literal("text"),
+  text: z.string().min(1),
+})
+
+const contentPartSchema = z.union([textContentPartSchema, imageContentPartSchema])
+
+const messageContentSchema = z.union([
+  z.string().min(1),
+  z.array(contentPartSchema).min(1),
+])
+
 const requestSchema = z.object({
   messages: z
     .array(
       z.object({
         role: z.enum(["system", "user", "assistant"]),
-        content: z.string().min(1),
+        content: messageContentSchema,
       }),
     )
     .min(1),
@@ -51,6 +70,7 @@ Rules:
 You are configured on gpt-5-mini in low reasoning mode with tool access.`
 
 type IncomingMessage = z.infer<typeof requestSchema>["messages"][number]
+type ContentPart = z.infer<typeof contentPartSchema>
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -259,8 +279,7 @@ export async function POST(req: Request) {
 
     const llm = new ChatOpenAI({
       model: "gpt-5-mini",
-      maxCompletionTokens: 800,
-      reasoning: { effort: "low" },
+      maxCompletionTokens: 4096,
       apiKey: env.OPENAI_API_KEY,
     })
 
@@ -270,19 +289,75 @@ export async function POST(req: Request) {
       systemPrompt: SYSTEM_PROMPT,
     })
 
-    const result = await agent.invoke({
-      messages: mapToLangChainMessages(messages),
+    const langChainMessages = mapToLangChainMessages(messages)
+
+    console.log("[chatbot] Invoking agent with", langChainMessages.length, "messages")
+    langChainMessages.forEach((msg, idx) => {
+      const msgType = msg._getType()
+      const hasImages = Array.isArray(msg.content) && 
+        msg.content.some((c: unknown) => typeof c === "object" && c !== null && "type" in c && (c as { type: string }).type === "image_url")
+      console.log(`[chatbot] Input[${idx}] type=${msgType}, hasImages=${hasImages}`)
     })
 
-    const aiMessage = [...result.messages].reverse().find((message) => message._getType() === "ai") as
-      | AIMessage
-      | undefined
+    const result = await agent.invoke({
+      messages: langChainMessages,
+    })
+
+    const allMessages = result.messages ?? []
+    console.log("[chatbot] Agent returned", allMessages.length, "messages")
+
+    // Log all messages for debugging
+    allMessages.forEach((msg: { _getType: () => string; content: unknown; tool_calls?: unknown[] }, idx: number) => {
+      const msgType = msg._getType()
+      const hasToolCalls = "tool_calls" in msg && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0
+      const contentType = typeof msg.content
+      const contentPreview = typeof msg.content === "string" 
+        ? msg.content.slice(0, 150) 
+        : Array.isArray(msg.content) 
+          ? `[array of ${msg.content.length} parts]`
+          : String(msg.content)
+      console.log(`[chatbot] Result[${idx}] type=${msgType}, hasToolCalls=${hasToolCalls}, contentType=${contentType}, content=${contentPreview}`)
+    })
+
+    // Find the last AI message that has actual text content (not just tool calls)
+    const aiMessagesWithContent = [...allMessages]
+      .reverse()
+      .filter((msg): msg is AIMessage => msg._getType() === "ai")
+      .filter((msg) => {
+        const content = normalizeContent(msg.content)
+        return content.length > 0
+      })
+
+    const aiMessage = aiMessagesWithContent[0]
 
     if (!aiMessage) {
+      // Fallback: get any AI message and check for tool_calls
+      const anyAiMessage = [...allMessages].reverse().find((msg) => msg._getType() === "ai") as AIMessage | undefined
+      
+      if (anyAiMessage) {
+        console.error("[chatbot] AI message found but has no text content")
+        console.error("[chatbot] AI message content:", JSON.stringify(anyAiMessage.content, null, 2))
+        console.error("[chatbot] AI message tool_calls:", JSON.stringify(anyAiMessage.tool_calls, null, 2))
+        console.error("[chatbot] AI message additional_kwargs:", JSON.stringify(anyAiMessage.additional_kwargs, null, 2))
+      } else {
+        console.error("[chatbot] No AI message found at all. Message types:", allMessages.map((m: { _getType: () => string }) => m._getType()))
+      }
+      
       throw new Error("The assistant was unable to craft a response.")
     }
 
-    const responseContent = normalizeContent(aiMessage.content) || "I could not generate a response."
+    const responseContent = normalizeContent(aiMessage.content)
+    console.log("[chatbot] Final response length:", responseContent.length)
+
+    if (!responseContent) {
+      console.error("[chatbot] normalizeContent returned empty for AI message:", JSON.stringify(aiMessage.content, null, 2))
+      return NextResponse.json({
+        message: {
+          role: "assistant",
+          content: "I processed your request but couldn't formulate a text response. Please try again.",
+        },
+      })
+    }
 
     return NextResponse.json({
       message: {
@@ -361,15 +436,30 @@ function serializeEvent(event: { id: string; scheduleId: string; start: Date; en
 
 function mapToLangChainMessages(messages: IncomingMessage[]) {
   return messages.map((message) => {
+    const content = normalizeMessageContent(message.content)
     switch (message.role) {
       case "system":
-        return new SystemMessage(message.content)
+        return new SystemMessage(typeof content === "string" ? content : extractTextFromContent(content))
       case "assistant":
-        return new AIMessage(message.content)
+        return new AIMessage(typeof content === "string" ? content : extractTextFromContent(content))
       default:
-        return new HumanMessage(message.content)
+        return new HumanMessage({ content })
     }
   })
+}
+
+function normalizeMessageContent(content: IncomingMessage["content"]): string | ContentPart[] {
+  if (typeof content === "string") {
+    return content
+  }
+  return content as ContentPart[]
+}
+
+function extractTextFromContent(parts: ContentPart[]): string {
+  return parts
+    .filter((part): part is z.infer<typeof textContentPartSchema> => part.type === "text")
+    .map((part) => part.text)
+    .join("\n")
 }
 
 type TextContentBlock = {
