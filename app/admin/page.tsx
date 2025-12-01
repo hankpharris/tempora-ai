@@ -287,8 +287,7 @@ export default function AdminPage() {
             <p className="text-xs uppercase tracking-[0.35em] text-primary/80">Operations</p>
             <h1 className="mt-1 text-4xl font-semibold text-foreground">Admin Control Center</h1>
             <p className="mt-2 max-w-2xl text-sm text-default-500">
-              Monitor and fine-tune Tempora datasets with inline editing, responsive insights, and a
-              spreadsheet-inspired layout that keeps relational context clear.
+              Monitor and fine-tune every line in the Tempora database with inline editing.
             </p>
           </div>
           <div className="flex items-center gap-4">

@@ -34,11 +34,30 @@ const INITIAL_ASSISTANT_MESSAGE: ChatMessage = {
   id: "assistant-intro",
   role: "assistant",
   content:
-    "Hi! I'm the Tempora copilot. Ask me to inspect schedules, create events, or move things around.",
+    "Hi! I'm Tempora. Ask me to inspect schedules, create events, or move things around.",
 }
 
 const makeMessageId = (prefix: string) =>
   `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+
+function getUserContext() {
+  try {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const locale = navigator.language || "en-US"
+    const localTime = new Date().toLocaleString(locale, {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZoneName: "short",
+    })
+    return { timezone, localTime, locale }
+  } catch {
+    return undefined
+  }
+}
 
 const roleLabel = (role: ChatRole) => {
   if (role === "assistant") return "Tempora AI"
@@ -85,6 +104,7 @@ export function ChatbotDock() {
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
+  const [isDragging, setIsDragging] = useState(false)
   const endRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -108,10 +128,7 @@ export function ChatbotDock() {
     setError(null)
   }, [])
 
-  const handleImageSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (!files?.length) return
-
+  const processImageFiles = useCallback((files: FileList | File[]) => {
     Array.from(files).forEach((file) => {
       if (!file.type.startsWith("image/")) {
         setError("Only image files are supported.")
@@ -137,11 +154,62 @@ export function ChatbotDock() {
       }
       reader.readAsDataURL(file)
     })
+  }, [])
+
+  const handleImageSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files?.length) return
+
+    processImageFiles(files)
 
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
+  }, [processImageFiles])
+
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
   }, [])
+
+  const handleDragEnter = useCallback((event: React.DragEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.dataTransfer.types.includes("Files")) {
+      setIsDragging(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((event: React.DragEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    // Only set dragging to false if we're leaving the drop zone entirely
+    const rect = event.currentTarget.getBoundingClientRect()
+    const x = event.clientX
+    const y = event.clientY
+    if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
+      setIsDragging(false)
+    }
+  }, [])
+
+  const handleDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setIsDragging(false)
+
+    if (!isAuthenticated || sessionLoading) return
+
+    const files = event.dataTransfer.files
+    if (!files?.length) return
+
+    const imageFiles = Array.from(files).filter((file) => file.type.startsWith("image/"))
+    if (imageFiles.length === 0) {
+      setError("Only image files are supported.")
+      return
+    }
+
+    processImageFiles(imageFiles)
+  }, [isAuthenticated, sessionLoading, processImageFiles])
 
   const removeImage = useCallback((imageId: string) => {
     setAttachedImages((prev) => prev.filter((img) => img.id !== imageId))
@@ -200,6 +268,7 @@ export function ChatbotDock() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: nextMessages.map(({ role, content }) => ({ role, content })),
+          userContext: getUserContext(),
         }),
       })
 
@@ -355,18 +424,35 @@ export function ChatbotDock() {
                     </div>
                   )}
                   
-                  <textarea
-                    className="h-24 w-full rounded-2xl border border-default/30 bg-background px-3 py-2 text-sm text-foreground shadow-inner outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60"
-                    placeholder={
-                      isAuthenticated
-                        ? "Ask about your events, request a summary, or attach an image..."
-                        : "Sign in to start chatting."
-                    }
-                    value={input}
-                    onChange={(event) => setInput(event.target.value)}
-                    onKeyDown={handleKeyDown}
-                    disabled={!isAuthenticated || sessionLoading}
-                  />
+                  <div
+                    className="relative"
+                    onDragOver={handleDragOver}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                  >
+                    <textarea
+                      className={`h-24 w-full rounded-2xl border bg-background px-3 py-2 text-sm text-foreground shadow-inner outline-none transition focus:border-primary focus:ring-1 focus:ring-primary/60 disabled:cursor-not-allowed disabled:opacity-60 ${
+                        isDragging
+                          ? "border-primary border-dashed border-2 bg-primary/5"
+                          : "border-default/30"
+                      }`}
+                      placeholder={
+                        isAuthenticated
+                          ? "Ask about your events, or drag & drop an image here..."
+                          : "Sign in to start chatting."
+                      }
+                      value={input}
+                      onChange={(event) => setInput(event.target.value)}
+                      onKeyDown={handleKeyDown}
+                      disabled={!isAuthenticated || sessionLoading}
+                    />
+                    {isDragging && (
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-primary/10">
+                        <span className="text-sm font-medium text-primary">Drop image here</span>
+                      </div>
+                    )}
+                  </div>
                   <div className="flex items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-2">
                       <button

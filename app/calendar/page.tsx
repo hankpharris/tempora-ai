@@ -202,7 +202,7 @@ export default async function CalendarPage() {
                   <p className="text-xs uppercase tracking-[0.35em] text-primary/70">
                     Hello, {greetingName}
                   </p>
-                  <h1 className="mt-2 text-4xl font-semibold text-foreground">Temporal calendar</h1>
+                  <h1 className="mt-2 text-4xl font-semibold text-foreground">Tempora calendar</h1>
                   <p className="mt-2 max-w-2xl text-sm text-default-600">
                     Glide through your schedule with stacked perspectives. Scroll to morph from a
                     month bird&apos;s-eye to weekly focus and down to a precise daily timeline.

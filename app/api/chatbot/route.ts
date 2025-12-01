@@ -25,6 +25,12 @@ const messageContentSchema = z.union([
   z.array(contentPartSchema).min(1),
 ])
 
+const userContextSchema = z.object({
+  timezone: z.string().min(1),
+  localTime: z.string().min(1),
+  locale: z.string().optional(),
+})
+
 const requestSchema = z.object({
   messages: z
     .array(
@@ -34,6 +40,7 @@ const requestSchema = z.object({
       }),
     )
     .min(1),
+  userContext: userContextSchema.optional(),
 })
 
 const isoDateSchema = z
@@ -57,17 +64,34 @@ const updateEventSchema = z
     }
   })
 
-const SYSTEM_PROMPT = `You are Tempora, a focused assistant that helps the currently authenticated user inspect and mutate their schedules and events.
+type UserContext = z.infer<typeof userContextSchema>
 
+function buildSystemPrompt(userContext?: UserContext) {
+  const contextInfo = userContext
+    ? `
+User Context:
+- Timezone: ${userContext.timezone}
+- Local time: ${userContext.localTime}
+- Locale: ${userContext.locale || "not specified"}
+
+When the user mentions times like "tomorrow at 3pm" or "next Monday", interpret them in the user's timezone (${userContext.timezone}) and convert to UTC for storage.`
+    : ""
+
+  return `You are Tempora, a focused assistant that helps the currently authenticated user inspect and mutate their schedules and events.
+${contextInfo}
 Rules:
 - Always call the provided tools when you need real data. Do not guess IDs or fabricate schedule contents.
 - List schedules before referencing one, and list the events in question before updating or deleting them.
 - For new events, confirm the target schedule and ensure the end time is after the start time.
 - When updating, explain what changed and mention the schedule name.
 - If the user has not supplied enough info (schedule, time window, etc.) ask a follow-up question.
-- Work in ISO-8601 timestamps (UTC) and keep explanations short. Finish with an actionable summary of what you did or still need.
+- Do not attempt to clarify facts already known with relative certainty. 
+    - For example if you check a users schedule list, and they only have one, you can assume this is what they are referring to when they ask about their schedule with reasonable certainty.
+- Work in ISO-8601 timestamps (UTC) internally but present times to the user in their local timezone when possible.
+- Keep explanations short. Finish with an actionable summary of what you did or still need.
 
-You are configured on gpt-5-mini in low reasoning mode with tool access.`
+You are configured on gpt-5-mini with tool access.`
+}
 
 type IncomingMessage = z.infer<typeof requestSchema>["messages"][number]
 type ContentPart = z.infer<typeof contentPartSchema>
@@ -81,9 +105,10 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json()
-    const { messages } = requestSchema.parse(body)
+    const { messages, userContext } = requestSchema.parse(body)
 
     const userId = session.user.id
+    const systemPrompt = buildSystemPrompt(userContext)
 
     const listSchedulesTool = tool(
       async () => {
@@ -286,7 +311,7 @@ export async function POST(req: Request) {
     const agent = createAgent({
       model: llm,
       tools,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt,
     })
 
     const langChainMessages = mapToLangChainMessages(messages)
