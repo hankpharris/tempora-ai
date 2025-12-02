@@ -25,8 +25,12 @@ type AdminDataResponse = {
   events: Array<{
     id: string
     scheduleId: string
-    start: Date
-    end: Date
+    name: string
+    description: string | null
+    start: Date[]
+    end: Date[]
+    repeated: string
+    repeatUntil: Date | null
     createdAt: Date
   }>
 }

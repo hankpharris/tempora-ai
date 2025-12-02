@@ -37,6 +37,12 @@ type EditingCell = {
   field: string
 } | null
 
+type ExpandedCell = {
+  table: keyof TableData
+  rowId: string
+  field: string
+} | null
+
 export default function AdminPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -51,6 +57,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [editingCell, setEditingCell] = useState<EditingCell>(null)
   const [editValue, setEditValue] = useState("")
+  const [expandedCell, setExpandedCell] = useState<ExpandedCell>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -89,10 +96,30 @@ export default function AdminPage() {
   const handleCellClick = (table: keyof TableData, rowId: string, field: string, value: unknown) => {
     if (!isEditMode) return
     setEditingCell({ table, rowId, field })
+    setExpandedCell(null) // Close any expanded cell when editing
+    
+    // Handle arrays (start[] and end[])
+    if (Array.isArray(value)) {
+      // For arrays, convert to JSON for editing
+      const formattedArray = value.map((v) => {
+        if (v instanceof Date || (typeof v === "string" && !isNaN(Date.parse(v)))) {
+          return new Date(v as string).toISOString()
+        }
+        return v
+      })
+      setEditValue(JSON.stringify(formattedArray))
+      return
+    }
+    
     // Format date values for input
-    if (value instanceof Date || (field.includes("At") || field === "start" || field === "end" || field === "emailVerified")) {
-      const dateValue = value instanceof Date ? value : new Date(value as string)
-      setEditValue(dateValue.toISOString().slice(0, 16)) // Format for datetime-local input
+    const isDateField = field.includes("At") || field === "emailVerified" || field === "repeatUntil"
+    if (isDateField) {
+      if (value) {
+        const dateValue = value instanceof Date ? value : new Date(value as string)
+        setEditValue(dateValue.toISOString().slice(0, 16)) // Format for datetime-local input
+      } else {
+        setEditValue("") // Handle null repeatUntil
+      }
     } else {
       setEditValue(String(value || ""))
     }
@@ -132,8 +159,13 @@ export default function AdminPage() {
       editingCell?.table === table &&
       editingCell?.rowId === rowId &&
       editingCell?.field === columnKey
+    const isExpanded =
+      expandedCell?.table === table &&
+      expandedCell?.rowId === rowId &&
+      expandedCell?.field === columnKey
 
-    const isDateField = columnKey.includes("At") || columnKey === "start" || columnKey === "end" || columnKey === "emailVerified"
+    const isDateField = columnKey.includes("At") || columnKey === "emailVerified" || columnKey === "repeatUntil"
+    const isDateArrayField = columnKey === "start" || columnKey === "end"
 
     if (isEditing) {
       return (
@@ -166,39 +198,93 @@ export default function AdminPage() {
       )
     }
 
-    // Format date values for display
+    // Format value for display
     let displayValue: string
-    if (isDateField && cellValue) {
+    let fullValue: string
+
+    if (Array.isArray(cellValue)) {
+      // Handle arrays (like start[] and end[])
+      if (isDateArrayField) {
+        const formattedDates = cellValue.map((v) => {
+          try {
+            const date = typeof v === "string" ? new Date(v) : v
+            return date instanceof Date && !isNaN(date.getTime())
+              ? date.toLocaleString()
+              : String(v)
+          } catch {
+            return String(v)
+          }
+        })
+        fullValue = formattedDates.join("\n")
+        displayValue = fullValue
+      } else {
+        fullValue = JSON.stringify(cellValue, null, 2)
+        displayValue = fullValue
+      }
+    } else if (isDateField && cellValue) {
       try {
         const date = typeof cellValue === "string" ? new Date(cellValue) : cellValue
         displayValue =
           date instanceof Date && !isNaN(date.getTime())
             ? date.toLocaleString()
             : String(cellValue || "")
+        fullValue = displayValue
       } catch {
         displayValue = String(cellValue || "")
+        fullValue = displayValue
       }
     } else {
       displayValue = String(cellValue ?? "")
+      fullValue = displayValue
     }
 
     const formattedValue = displayValue.trim() === "" ? "—" : displayValue
 
+    // Check if content needs truncation (more than ~3 lines worth of characters)
+    const needsTruncation = formattedValue.length > 80 || formattedValue.split("\n").length > 3
+    const truncatedValue = needsTruncation && !isExpanded
+      ? formattedValue.split("\n").slice(0, 3).join("\n").slice(0, 80) + "..."
+      : formattedValue
+
+    const handleCellClickOrExpand = () => {
+      if (isEditMode) {
+        handleCellClick(table, rowId, columnKey, cellValue)
+      } else if (needsTruncation) {
+        // Toggle expand/collapse
+        if (isExpanded) {
+          setExpandedCell(null)
+        } else {
+          setExpandedCell({ table, rowId, field: columnKey })
+        }
+      }
+    }
+
     return (
-      <span
-        onClick={() => {
-          if (isEditMode) {
-            handleCellClick(table, rowId, columnKey, cellValue)
-          }
-        }}
-        className={`block min-h-[1.75rem] rounded-xl px-1.5 py-1 text-sm text-foreground/90 transition-colors ${
-          isEditMode
-            ? "cursor-pointer hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            : ""
-        }`}
-      >
-        {formattedValue}
-      </span>
+      <div className="relative">
+        <span
+          onClick={handleCellClickOrExpand}
+          className={`block min-h-[1.75rem] rounded-xl px-1.5 py-1 text-sm text-foreground/90 transition-colors whitespace-pre-wrap ${
+            isEditMode
+              ? "cursor-pointer hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              : needsTruncation
+                ? "cursor-pointer hover:bg-default-100"
+                : ""
+          } ${!isExpanded && needsTruncation ? "line-clamp-3" : ""}`}
+        >
+          {truncatedValue}
+        </span>
+        {isExpanded && needsTruncation && (
+          <div 
+            className="absolute left-0 top-0 z-50 min-w-[200px] max-w-[400px] rounded-xl border border-primary/30 bg-content1 p-3 shadow-xl"
+            onClick={handleCellClickOrExpand}
+          >
+            <pre className="whitespace-pre-wrap text-sm text-foreground/90 max-h-[300px] overflow-auto">
+              {fullValue}
+            </pre>
+            <p className="mt-2 text-xs text-default-500">Click to collapse</p>
+          </div>
+        )}
+      </div>
     )
   }
 
@@ -228,7 +314,7 @@ export default function AdminPage() {
     users: ["id", "email", "name", "type", "createdAt"],
     friendships: ["user_id1", "user_id2", "status", "createdAt"],
     schedules: ["id", "userId", "name", "createdAt"],
-    events: ["id", "scheduleId", "start", "end", "createdAt"],
+    events: ["id", "scheduleId", "name", "description", "start", "end", "repeated", "repeatUntil", "createdAt"],
   }
 
   const currentData = data[activeTable] || []

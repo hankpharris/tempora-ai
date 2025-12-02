@@ -48,18 +48,32 @@ const isoDateSchema = z
   .datetime()
   .describe("ISO-8601 timestamp, for example 2024-11-18T13:30:00Z")
 
+const timeSlotInputSchema = z.object({
+  start: isoDateSchema.describe("When this time slot starts"),
+  end: isoDateSchema.describe("When this time slot ends"),
+})
+
 const updateEventSchema = z
   .object({
     eventId: z.string().min(1, "eventId is required"),
-    start: isoDateSchema.optional(),
-    end: isoDateSchema.optional(),
-    targetScheduleId: z.string().min(1).optional(),
+    name: z.string().min(1).optional().describe("New event name/title"),
+    description: z.string().optional().describe("New event description (pass empty string to clear)"),
+    timeSlots: z.array(timeSlotInputSchema).min(1).optional().describe("Replace all time slots with new ones"),
+    repeated: z.enum(["NEVER", "DAILY", "WEEKLY", "MONTHLY"]).optional().describe("New repeat frequency"),
+    repeatUntil: isoDateSchema.nullable().optional().describe("New repeat end date (null to repeat forever)"),
+    targetScheduleId: z.string().min(1).optional().describe("Move event to a different schedule"),
   })
   .superRefine((data, ctx) => {
-    if (!data.start && !data.end && !data.targetScheduleId) {
+    const hasUpdate = data.name !== undefined || 
+                      data.description !== undefined || 
+                      data.timeSlots !== undefined || 
+                      data.repeated !== undefined || 
+                      data.repeatUntil !== undefined || 
+                      data.targetScheduleId !== undefined
+    if (!hasUpdate) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Provide a new start/end time or a targetScheduleId to update the event.",
+        message: "Provide at least one field to update (name, description, timeSlots, repeated, repeatUntil, or targetScheduleId).",
       })
     }
   })
@@ -182,21 +196,69 @@ export async function POST(req: Request) {
       },
     )
 
-    const createEventTool = tool(
-      async ({ scheduleId, start, end }: { scheduleId: string; start: string; end: string }) => {
-        const schedule = await ensureScheduleOwnership(scheduleId, userId)
-        const startDate = parseIsoDate(start, "start")
-        const endDate = parseIsoDate(end, "end")
+    const repeatFrequencySchema = z.enum(["NEVER", "DAILY", "WEEKLY", "MONTHLY"]).describe(
+      "How often the event repeats. NEVER = one-time event, DAILY/WEEKLY/MONTHLY = recurring event"
+    )
 
-        if (endDate <= startDate) {
-          throw new Error("Event end time must be after the start time.")
+    const timeSlotSchema = z.object({
+      start: isoDateSchema.describe("When this time slot starts"),
+      end: isoDateSchema.describe("When this time slot ends"),
+    })
+
+    const createEventTool = tool(
+      async ({ 
+        scheduleId, 
+        name, 
+        description, 
+        timeSlots, 
+        repeated, 
+        repeatUntil 
+      }: { 
+        scheduleId: string
+        name: string
+        description?: string
+        timeSlots: Array<{ start: string; end: string }>
+        repeated?: string
+        repeatUntil?: string
+      }) => {
+        const schedule = await ensureScheduleOwnership(scheduleId, userId)
+        const repeatUntilDate = repeatUntil ? parseIsoDate(repeatUntil, "repeatUntil") : null
+
+        // Parse and validate all time slots
+        const startDates: Date[] = []
+        const endDates: Date[] = []
+
+        for (let i = 0; i < timeSlots.length; i++) {
+          const slot = timeSlots[i]
+          if (!slot) continue
+          const startDate = parseIsoDate(slot.start, `timeSlots[${i}].start`)
+          const endDate = parseIsoDate(slot.end, `timeSlots[${i}].end`)
+
+          if (endDate <= startDate) {
+            throw new Error(`Time slot ${i + 1}: end time must be after start time.`)
+          }
+
+          startDates.push(startDate)
+          endDates.push(endDate)
+        }
+
+        if (startDates.length === 0) {
+          throw new Error("At least one time slot is required.")
+        }
+
+        if (repeatUntilDate && repeatUntilDate <= startDates[0]!) {
+          throw new Error("repeatUntil must be after the first time slot.")
         }
 
         const event = await prisma.event.create({
           data: {
             scheduleId: schedule.id,
-            start: startDate,
-            end: endDate,
+            name,
+            description: description ?? null,
+            start: startDates,
+            end: endDates,
+            repeated: (repeated as "NEVER" | "DAILY" | "WEEKLY" | "MONTHLY") ?? "NEVER",
+            repeatUntil: repeatUntilDate,
           },
         })
 
@@ -212,36 +274,80 @@ export async function POST(req: Request) {
       },
       {
         name: "create_calendar_event",
-        description: "Create a new event inside one of the user's schedules.",
+        description: `Create a new event inside one of the user's schedules.
+- 'name' is the event title (e.g., "Team Meeting", "CS 101 Lecture")
+- 'timeSlots' is an array of {start, end} pairs - use multiple slots for events that occur multiple times per repetition period
+- 'repeated' controls recurrence: NEVER (default), DAILY, WEEKLY, or MONTHLY
+- 'repeatUntil' is when the recurring event stops repeating (null = repeat forever)
+
+Example 1: Simple weekly meeting (Mondays 2-3pm):
+- timeSlots: [{start: "2024-12-02T14:00:00Z", end: "2024-12-02T15:00:00Z"}]
+- repeated: "WEEKLY"
+
+Example 2: Class that meets twice per week (Tue/Thu 10am-11:30am), repeating weekly:
+- timeSlots: [
+    {start: "2024-12-03T10:00:00Z", end: "2024-12-03T11:30:00Z"},  // Tuesday
+    {start: "2024-12-05T10:00:00Z", end: "2024-12-05T11:30:00Z"}   // Thursday
+  ]
+- repeated: "WEEKLY"
+- repeatUntil: "2024-05-15T23:59:59Z"`,
         schema: z.object({
           scheduleId: z.string().min(1, "scheduleId is required"),
-          start: isoDateSchema,
-          end: isoDateSchema,
+          name: z.string().min(1, "Event name is required").describe("The title/name of the event"),
+          description: z.string().optional().describe("Optional description or notes for the event"),
+          timeSlots: z.array(timeSlotSchema).min(1, "At least one time slot is required").describe("Array of time slots - each has start and end timestamps"),
+          repeated: repeatFrequencySchema.optional().default("NEVER"),
+          repeatUntil: isoDateSchema.optional().describe("When to stop repeating (null = forever). Only relevant if repeated != NEVER"),
         }),
       },
     )
 
     const updateEventTool = tool(
-      async ({ eventId, start, end, targetScheduleId }: z.infer<typeof updateEventSchema>) => {
+      async ({ eventId, name, description, timeSlots, repeated, repeatUntil, targetScheduleId }: z.infer<typeof updateEventSchema>) => {
         const existing = await ensureEventOwnership(eventId, userId)
-        const newStart = start ? parseIsoDate(start, "start") : existing.start
-        const newEnd = end ? parseIsoDate(end, "end") : existing.end
-
-        if (newEnd <= newStart) {
-          throw new Error("Updated end time must be after the start time.")
-        }
 
         const data: {
-          start?: Date
-          end?: Date
+          name?: string
+          description?: string | null
+          start?: Date[]
+          end?: Date[]
+          repeated?: "NEVER" | "DAILY" | "WEEKLY" | "MONTHLY"
+          repeatUntil?: Date | null
           scheduleId?: string
         } = {}
 
-        if (start) {
-          data.start = newStart
+        if (name !== undefined) {
+          data.name = name
         }
-        if (end) {
-          data.end = newEnd
+        if (description !== undefined) {
+          data.description = description || null
+        }
+        if (timeSlots !== undefined) {
+          const startDates: Date[] = []
+          const endDates: Date[] = []
+
+          for (let i = 0; i < timeSlots.length; i++) {
+            const slot = timeSlots[i]
+            if (!slot) continue
+            const startDate = parseIsoDate(slot.start, `timeSlots[${i}].start`)
+            const endDate = parseIsoDate(slot.end, `timeSlots[${i}].end`)
+
+            if (endDate <= startDate) {
+              throw new Error(`Time slot ${i + 1}: end time must be after start time.`)
+            }
+
+            startDates.push(startDate)
+            endDates.push(endDate)
+          }
+
+          data.start = startDates
+          data.end = endDates
+        }
+        if (repeated !== undefined) {
+          data.repeated = repeated
+        }
+        if (repeatUntil !== undefined) {
+          data.repeatUntil = repeatUntil ? parseIsoDate(repeatUntil, "repeatUntil") : null
         }
 
         let targetSchedule = existing.schedule
@@ -269,7 +375,7 @@ export async function POST(req: Request) {
       },
       {
         name: "update_calendar_event",
-        description: "Adjust an event's timing and optionally move it to another schedule.",
+        description: "Update an event's details: name, description, time slots, recurrence settings, or move it to another schedule. Use timeSlots to replace all existing time slots.",
         schema: updateEventSchema,
       },
     )
@@ -449,13 +555,34 @@ function parseIsoDate(value: string, label: string) {
   return parsed
 }
 
-function serializeEvent(event: { id: string; scheduleId: string; start: Date; end: Date }) {
+function serializeEvent(event: { 
+  id: string
+  scheduleId: string
+  name: string
+  description: string | null
+  start: Date[]
+  end: Date[]
+  repeated: string
+  repeatUntil: Date | null
+}) {
+  // Create time slots from parallel start/end arrays
+  const timeSlots = event.start.map((startTime, idx) => {
+    const endTime = event.end[idx] ?? startTime
+    return {
+      start: startTime.toISOString(),
+      end: endTime.toISOString(),
+      durationMinutes: Math.round((endTime.getTime() - startTime.getTime()) / 60000),
+    }
+  })
+
   return {
     id: event.id,
     scheduleId: event.scheduleId,
-    start: event.start.toISOString(),
-    end: event.end.toISOString(),
-    durationMinutes: Math.round((event.end.getTime() - event.start.getTime()) / 60000),
+    name: event.name,
+    description: event.description,
+    timeSlots, // Array of {start, end, durationMinutes}
+    repeated: event.repeated,
+    repeatUntil: event.repeatUntil?.toISOString() ?? null,
   }
 }
 
