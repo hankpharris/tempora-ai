@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
+import { ExpandableEventCard } from "@/components/ExpandableEventCard"
 import { MovingBlob } from "@/components/MovingBlob"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -301,15 +302,14 @@ export default async function CalendarPage() {
                                 {day.events.slice(0, 2).map((event) => {
                                   const styles = COLOR_STYLES[event.colorToken]
                                   return (
-                                    <div
+                                    <ExpandableEventCard
                                       key={`${day.key}-${event.id}`}
-                                      className={`rounded-xl border px-2 py-1 text-xs font-medium ${styles.border} ${styles.surface} ${styles.text}`}
-                                    >
-                                      <p>{event.name}</p>
-                                      <p className="text-[11px] text-default-600">
-                                        {formatTimeRange(event)}
-                                      </p>
-                                    </div>
+                                      name={event.name}
+                                      description={event.description}
+                                      timeRange={formatTimeRange(event)}
+                                      styles={styles}
+                                      variant="compact"
+                                    />
                                   )
                                 })}
                                 {day.events.length > 2 && (
@@ -377,13 +377,14 @@ export default async function CalendarPage() {
                             {day.events.map((event) => {
                               const styles = COLOR_STYLES[event.colorToken]
                               return (
-                                <div
+                                <ExpandableEventCard
                                   key={`${day.key}-${event.id}`}
-                                  className={`rounded-2xl border px-3 py-2 text-xs font-medium ${styles.border} ${styles.surface} ${styles.text}`}
-                                >
-                                  <p className="text-sm font-semibold">{event.name}</p>
-                                  <p className="text-default-600">{formatTimeRange(event)}</p>
-                                </div>
+                                  name={event.name}
+                                  description={event.description}
+                                  timeRange={formatTimeRange(event)}
+                                  styles={styles}
+                                  variant="default"
+                                />
                               )
                             })}
                           </div>
@@ -478,18 +479,14 @@ export default async function CalendarPage() {
                       prioritizedUpcoming.map((event) => {
                         const styles = COLOR_STYLES[event.colorToken]
                         return (
-                          <div
+                          <ExpandableEventCard
                             key={`upcoming-${event.id}`}
-                            className={`rounded-2xl border px-4 py-3 text-sm ${styles.border} ${styles.surface}`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className={`h-2 w-2 rounded-full ${styles.dot}`} />
-                              <p className={`font-semibold ${styles.text}`}>{event.name}</p>
-                            </div>
-                            <p className="text-xs text-default-600">
-                              {formatTimeRange(event)} · {getRelativeLabel(event.start, today)}
-                            </p>
-                          </div>
+                            name={event.name}
+                            description={event.description}
+                            timeRange={`${formatTimeRange(event)} · ${getRelativeLabel(event.start, today)}`}
+                            styles={styles}
+                            variant="default"
+                          />
                         )
                       })
                     )}

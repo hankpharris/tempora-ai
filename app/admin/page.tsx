@@ -19,6 +19,7 @@ import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { useCallback, useEffect, useState } from "react"
 import { EditModeToggle } from "../../components/EditModeToggle"
+import { ExpandableCell } from "../../components/ExpandableCell"
 import { LogoutButton } from "../../components/LogoutButton"
 import { MovingBlob } from "../../components/MovingBlob"
 
@@ -32,12 +33,6 @@ type TableData = {
 }
 
 type EditingCell = {
-  table: keyof TableData
-  rowId: string
-  field: string
-} | null
-
-type ExpandedCell = {
   table: keyof TableData
   rowId: string
   field: string
@@ -57,7 +52,6 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [editingCell, setEditingCell] = useState<EditingCell>(null)
   const [editValue, setEditValue] = useState("")
-  const [expandedCell, setExpandedCell] = useState<ExpandedCell>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -96,7 +90,6 @@ export default function AdminPage() {
   const handleCellClick = (table: keyof TableData, rowId: string, field: string, value: unknown) => {
     if (!isEditMode) return
     setEditingCell({ table, rowId, field })
-    setExpandedCell(null) // Close any expanded cell when editing
     
     // Handle arrays (start[] and end[])
     if (Array.isArray(value)) {
@@ -159,10 +152,6 @@ export default function AdminPage() {
       editingCell?.table === table &&
       editingCell?.rowId === rowId &&
       editingCell?.field === columnKey
-    const isExpanded =
-      expandedCell?.table === table &&
-      expandedCell?.rowId === rowId &&
-      expandedCell?.field === columnKey
 
     const isDateField = columnKey.includes("At") || columnKey === "emailVerified" || columnKey === "repeatUntil"
     const isDateArrayField = columnKey === "start" || columnKey === "end"
@@ -200,7 +189,6 @@ export default function AdminPage() {
 
     // Format value for display
     let displayValue: string
-    let fullValue: string
 
     if (Array.isArray(cellValue)) {
       // Handle arrays (like start[] and end[])
@@ -215,11 +203,9 @@ export default function AdminPage() {
             return String(v)
           }
         })
-        fullValue = formattedDates.join("\n")
-        displayValue = fullValue
+        displayValue = formattedDates.join("\n")
       } else {
-        fullValue = JSON.stringify(cellValue, null, 2)
-        displayValue = fullValue
+        displayValue = JSON.stringify(cellValue, null, 2)
       }
     } else if (isDateField && cellValue) {
       try {
@@ -228,64 +214,29 @@ export default function AdminPage() {
           date instanceof Date && !isNaN(date.getTime())
             ? date.toLocaleString()
             : String(cellValue || "")
-        fullValue = displayValue
       } catch {
         displayValue = String(cellValue || "")
-        fullValue = displayValue
       }
     } else {
       displayValue = String(cellValue ?? "")
-      fullValue = displayValue
     }
 
     const formattedValue = displayValue.trim() === "" ? "—" : displayValue
 
-    // Check if content needs truncation (more than ~3 lines worth of characters)
-    const needsTruncation = formattedValue.length > 80 || formattedValue.split("\n").length > 3
-    const truncatedValue = needsTruncation && !isExpanded
-      ? formattedValue.split("\n").slice(0, 3).join("\n").slice(0, 80) + "..."
-      : formattedValue
-
-    const handleCellClickOrExpand = () => {
-      if (isEditMode) {
-        handleCellClick(table, rowId, columnKey, cellValue)
-      } else if (needsTruncation) {
-        // Toggle expand/collapse
-        if (isExpanded) {
-          setExpandedCell(null)
-        } else {
-          setExpandedCell({ table, rowId, field: columnKey })
-        }
-      }
+    // If in edit mode, show editable cell
+    if (isEditMode) {
+      return (
+        <div
+          onClick={() => handleCellClick(table, rowId, columnKey, cellValue)}
+          className="min-h-[1.75rem] rounded-xl px-1.5 py-1 text-sm text-foreground/90 cursor-pointer hover:text-primary transition-colors"
+        >
+          <span className="whitespace-pre-wrap">{formattedValue}</span>
+        </div>
+      )
     }
 
-    return (
-      <div className="relative">
-        <span
-          onClick={handleCellClickOrExpand}
-          className={`block min-h-[1.75rem] rounded-xl px-1.5 py-1 text-sm text-foreground/90 transition-colors whitespace-pre-wrap ${
-            isEditMode
-              ? "cursor-pointer hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-              : needsTruncation
-                ? "cursor-pointer hover:bg-default-100"
-                : ""
-          } ${!isExpanded && needsTruncation ? "line-clamp-3" : ""}`}
-        >
-          {truncatedValue}
-        </span>
-        {isExpanded && needsTruncation && (
-          <div 
-            className="absolute left-0 top-0 z-50 min-w-[200px] max-w-[400px] rounded-xl border border-primary/30 bg-content1 p-3 shadow-xl"
-            onClick={handleCellClickOrExpand}
-          >
-            <pre className="whitespace-pre-wrap text-sm text-foreground/90 max-h-[300px] overflow-auto">
-              {fullValue}
-            </pre>
-            <p className="mt-2 text-xs text-default-500">Click to collapse</p>
-          </div>
-        )}
-      </div>
-    )
+    // Otherwise, use ExpandableCell component for automatic truncation/expansion
+    return <ExpandableCell value={formattedValue} columnName={columnKey} />
   }
 
   if (status === "loading") {
@@ -431,8 +382,8 @@ export default function AdminPage() {
                 No data available for {activeTable}
               </div>
             ) : (
-              <div className="overflow-hidden rounded-3xl border border-default/20 shadow-inner">
-                <div className="relative overflow-auto">
+              <div className="rounded-3xl border border-default/20 shadow-inner overflow-visible">
+                <div className="relative overflow-x-auto overflow-y-visible">
                   <Table
                     aria-label={`${activeTable} table`}
                     removeWrapper
