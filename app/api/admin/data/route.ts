@@ -62,7 +62,8 @@ export async function GET() {
       users,
       friendships,
       schedules,
-      events,
+      // Prisma types may be out of sync - start and end are arrays in the schema
+      events: events as AdminDataResponse["events"],
     }
 
     return NextResponse.json(response)
