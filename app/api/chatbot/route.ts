@@ -131,7 +131,6 @@ export async function POST(req: Request) {
           include: {
             _count: { select: { events: true } },
             events: {
-              orderBy: { start: "asc" },
               take: 5,
             },
           },
@@ -167,13 +166,35 @@ export async function POST(req: Request) {
           throw new Error("The `from` time must be earlier than the `to` time.")
         }
 
-        const events = await prisma.event.findMany({
+        const allEvents = await prisma.event.findMany({
           where: {
             scheduleId: schedule.id,
-            ...(fromDate ? { start: { gte: fromDate } } : {}),
-            ...(toDate ? { end: { lte: toDate } } : {}),
           },
-          orderBy: { start: "asc" },
+        })
+
+        // Filter events by date range if provided
+        // An event matches if any of its time slots overlaps with the date range
+        let events = allEvents
+        if (fromDate || toDate) {
+          events = allEvents.filter((event) => {
+            // Check if any time slot overlaps with the date range
+            return event.start.some((startTime, idx) => {
+              const endTime = event.end[idx] ?? startTime
+              // Event overlaps if:
+              // - It starts before the "to" date (or no "to" date)
+              // - It ends after the "from" date (or no "from" date)
+              const startsBeforeTo = !toDate || startTime <= toDate
+              const endsAfterFrom = !fromDate || endTime >= fromDate
+              return startsBeforeTo && endsAfterFrom
+            })
+          })
+        }
+
+        // Sort by earliest start time
+        events.sort((a, b) => {
+          const aMinStart = Math.min(...a.start.map(d => d.getTime()))
+          const bMinStart = Math.min(...b.start.map(d => d.getTime()))
+          return aMinStart - bMinStart
         })
 
         return JSON.stringify(
@@ -357,16 +378,34 @@ Example 2: Class that meets twice per week (Tue/Thu 10am-11:30am), repeating wee
           data.scheduleId = targetSchedule.id
         }
 
+        const updateData: {
+          name?: string
+          description?: string | null
+          start?: Date[]
+          end?: Date[]
+          repeated?: "NEVER" | "DAILY" | "WEEKLY" | "MONTHLY"
+          repeatUntil?: Date | null
+          scheduleId?: string
+        } = {}
+        
+        if (data.name !== undefined) updateData.name = data.name
+        if (data.description !== undefined) updateData.description = data.description
+        if (data.start !== undefined) updateData.start = data.start
+        if (data.end !== undefined) updateData.end = data.end
+        if (data.repeated !== undefined) updateData.repeated = data.repeated
+        if (data.repeatUntil !== undefined) updateData.repeatUntil = data.repeatUntil
+        if (data.scheduleId !== undefined) updateData.scheduleId = data.scheduleId
+
         const updated = await prisma.event.update({
           where: { id: eventId },
-          data,
+          data: updateData,
         })
 
         return JSON.stringify(
           {
             message: "Event updated",
             schedule: targetSchedule,
-            before: serializeEvent(existing),
+            before: serializeEvent(existing as unknown as Parameters<typeof serializeEvent>[0]),
             after: serializeEvent(updated),
           },
           null,
@@ -391,7 +430,7 @@ Example 2: Class that meets twice per week (Tue/Thu 10am-11:30am), repeating wee
           {
             message: "Event deleted",
             schedule: event.schedule,
-            event: serializeEvent(event),
+            event: serializeEvent(event as unknown as Parameters<typeof serializeEvent>[0]),
           },
           null,
           2,

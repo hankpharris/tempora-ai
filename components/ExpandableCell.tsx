@@ -1,13 +1,13 @@
 "use client"
 
-import { useRef, useState, useEffect } from "react"
+import { useEffect, useRef, useState } from "react"
 
 type ExpandableCellProps = {
   value: string
   columnName: string
 }
 
-export function ExpandableCell({ value, columnName }: ExpandableCellProps) {
+export function ExpandableCell({ value, columnName: _columnName }: ExpandableCellProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [isOverflowing, setIsOverflowing] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
