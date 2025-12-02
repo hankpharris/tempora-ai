@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 // User model - integrated with auth (NextAuth/Auth.js compatible)
@@ -73,17 +74,31 @@ model Schedule {
   @@map("schedules")
 }
 
+// Event repeat frequency enum
+enum RepeatFrequency {
+  NEVER
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
 // Event model
+// start[] and end[] are parallel arrays - start[i] pairs with end[i]
+// This allows events with multiple time slots (e.g., a class twice per week)
 model Event {
-  id         String   @id @default(cuid())
-  scheduleId String   @map("schedule_id")
-  start      DateTime
-  end        DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id          String          @id @default(cuid())
+  scheduleId  String          @map("schedule_id")
+  name        String
+  description String?
+  start       DateTime[]      // Array of start times for this event's time slots
+  end         DateTime[]      // Array of end times (must match start array length)
+  repeated    RepeatFrequency @default(NEVER)
+  repeatUntil DateTime?       @map("repeat_until") // null = repeat forever (if repeated != NEVER)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
   // Relations
-  schedule   Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  schedule    Schedule        @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
 
   @@index([scheduleId])
   @@map("events")

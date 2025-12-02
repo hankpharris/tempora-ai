@@ -26,10 +26,21 @@ export async function POST(request: Request) {
     }
 
     // Convert value based on field type
-    let processedValue: string | Date = value
-    if (field.includes("At") || field === "start" || field === "end" || field === "emailVerified") {
-      processedValue = new Date(value)
+    let processedValue: string | Date | Date[] | null = value
+    
+    // Handle array fields (start[] and end[])
+    if (field === "start" || field === "end") {
+      try {
+        const parsed = JSON.parse(value) as string[]
+        processedValue = parsed.map((v) => new Date(v))
+      } catch {
+        // If not JSON, treat as single date and wrap in array
+        processedValue = value ? [new Date(value)] : []
+      }
+    } else if (field.includes("At") || field === "emailVerified" || field === "repeatUntil") {
+      processedValue = value ? new Date(value) : null // Handle nullable date fields like repeatUntil
     }
+    // Enum fields don't need conversion, they're passed as strings
 
     let result
 

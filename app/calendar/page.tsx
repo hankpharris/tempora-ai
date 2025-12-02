@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
+import { ExpandableEventCard } from "@/components/ExpandableEventCard"
 import { MovingBlob } from "@/components/MovingBlob"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -37,13 +38,33 @@ const TIME_FORMATTER = new Intl.DateTimeFormat("en-US", { hour: "numeric", minut
 
 type ColorToken = (typeof COLOR_TOKENS)[number]
 
+// Base event from database (has arrays of start/end)
+type BaseEvent = {
+  id: string
+  scheduleId: string
+  scheduleName: string
+  name: string
+  description: string | null
+  repeated: string
+  repeatUntil: Date | null
+  colorToken: ColorToken
+  startTimes: Date[]  // Array of start times
+  endTimes: Date[]    // Array of end times (parallel to startTimes)
+}
+
+// Individual occurrence for display (has single start/end)
 type NormalizedEvent = {
   id: string
   scheduleId: string
   scheduleName: string
+  name: string
+  description: string | null
+  repeated: string
+  repeatUntil: Date | null
   colorToken: ColorToken
   start: Date
   end: Date
+  slotIndex: number  // Which time slot this occurrence is from
 }
 
 type CalendarDay = {
@@ -119,21 +140,29 @@ export default async function CalendarPage() {
 
   const assignColor = createScheduleColorAssigner()
 
-  const normalizedEvents = schedules
-    .flatMap((schedule) => {
-      const colorToken = assignColor(schedule.id)
-      return schedule.events.map((event) => ({
-        id: event.id,
-        scheduleId: schedule.id,
-        scheduleName: schedule.name,
-        colorToken,
-        start: new Date(event.start),
-        end: new Date(event.end),
-      }))
-    })
-    .sort((a, b) => a.start.getTime() - b.start.getTime())
+  // First, create base events from database (with arrays of start/end times)
+  const baseEvents: BaseEvent[] = schedules.flatMap((schedule) => {
+    const colorToken = assignColor(schedule.id)
+    return schedule.events.map((event) => ({
+      id: event.id,
+      scheduleId: schedule.id,
+      scheduleName: schedule.name,
+      name: event.name,
+      description: event.description,
+      repeated: event.repeated,
+      repeatUntil: event.repeatUntil ? new Date(event.repeatUntil) : null,
+      colorToken,
+      startTimes: event.start.map((s) => new Date(s)),
+      endTimes: event.end.map((e) => new Date(e)),
+    }))
+  })
 
   const today = new Date()
+
+  // Expand repeating events into individual occurrences (one per time slot per repetition)
+  const normalizedEvents = expandRepeatingEvents(baseEvents, today).sort(
+    (a, b) => a.start.getTime() - b.start.getTime()
+  )
   const monthLabel = MONTH_FORMATTER.format(today)
   const eventsByDate = groupEventsByDate(normalizedEvents)
   const monthMatrix = buildMonthMatrix(today, eventsByDate)
@@ -228,7 +257,7 @@ export default async function CalendarPage() {
                           Next event
                         </span>
                         <p className="text-base font-semibold text-foreground">
-                          {highlightedEvent.scheduleName}
+                          {highlightedEvent.name}
                         </p>
                         <p>{formatTimeRange(highlightedEvent)}</p>
                       </>
@@ -273,15 +302,14 @@ export default async function CalendarPage() {
                                 {day.events.slice(0, 2).map((event) => {
                                   const styles = COLOR_STYLES[event.colorToken]
                                   return (
-                                    <div
+                                    <ExpandableEventCard
                                       key={`${day.key}-${event.id}`}
-                                      className={`rounded-xl border px-2 py-1 text-xs font-medium ${styles.border} ${styles.surface} ${styles.text}`}
-                                    >
-                                      <p>{event.scheduleName}</p>
-                                      <p className="text-[11px] text-default-600">
-                                        {formatTimeRange(event)}
-                                      </p>
-                                    </div>
+                                      name={event.name}
+                                      description={event.description}
+                                      timeRange={formatTimeRange(event)}
+                                      styles={styles}
+                                      variant="compact"
+                                    />
                                   )
                                 })}
                                 {day.events.length > 2 && (
@@ -349,13 +377,14 @@ export default async function CalendarPage() {
                             {day.events.map((event) => {
                               const styles = COLOR_STYLES[event.colorToken]
                               return (
-                                <div
+                                <ExpandableEventCard
                                   key={`${day.key}-${event.id}`}
-                                  className={`rounded-2xl border px-3 py-2 text-xs font-medium ${styles.border} ${styles.surface} ${styles.text}`}
-                                >
-                                  <p className="text-sm font-semibold">{event.scheduleName}</p>
-                                  <p className="text-default-600">{formatTimeRange(event)}</p>
-                                </div>
+                                  name={event.name}
+                                  description={event.description}
+                                  timeRange={formatTimeRange(event)}
+                                  styles={styles}
+                                  variant="default"
+                                />
                               )
                             })}
                           </div>
@@ -416,7 +445,7 @@ export default async function CalendarPage() {
                               top: `${laneOffset}px`,
                             }}
                           >
-                            <p>{event.scheduleName}</p>
+                            <p>{event.name}</p>
                             <p className="text-[11px] font-normal text-default-600">
                               {formatTimeRange(event)}
                             </p>
@@ -450,18 +479,14 @@ export default async function CalendarPage() {
                       prioritizedUpcoming.map((event) => {
                         const styles = COLOR_STYLES[event.colorToken]
                         return (
-                          <div
+                          <ExpandableEventCard
                             key={`upcoming-${event.id}`}
-                            className={`rounded-2xl border px-4 py-3 text-sm ${styles.border} ${styles.surface}`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className={`h-2 w-2 rounded-full ${styles.dot}`} />
-                              <p className={`font-semibold ${styles.text}`}>{event.scheduleName}</p>
-                            </div>
-                            <p className="text-xs text-default-600">
-                              {formatTimeRange(event)} · {getRelativeLabel(event.start, today)}
-                            </p>
-                          </div>
+                            name={event.name}
+                            description={event.description}
+                            timeRange={`${formatTimeRange(event)} · ${getRelativeLabel(event.start, today)}`}
+                            styles={styles}
+                            variant="default"
+                          />
                         )
                       })
                     )}
@@ -639,6 +664,110 @@ function getTimelinePlacement(event: NormalizedEvent, referenceDay: Date) {
     left: (startMinutes / MINUTES_IN_DAY) * 100,
     width: (widthMinutes / MINUTES_IN_DAY) * 100,
   }
+}
+
+/**
+ * Expands repeating events into individual occurrences.
+ * Each BaseEvent can have multiple time slots (start/end arrays).
+ * For repeating events, generates occurrences for each time slot in each repetition period.
+ */
+function expandRepeatingEvents(events: BaseEvent[], today: Date): NormalizedEvent[] {
+  const expanded: NormalizedEvent[] = []
+  const maxFutureDate = addDays(today, 365) // Limit to 1 year ahead for performance
+  const minPastDate = addDays(today, -90) // Show 90 days in the past
+
+  for (const event of events) {
+    // Process each time slot in the event
+    for (let slotIndex = 0; slotIndex < event.startTimes.length; slotIndex++) {
+      const slotStart = event.startTimes[slotIndex]
+      const slotEnd = event.endTimes[slotIndex]
+      if (!slotStart || !slotEnd) continue
+
+      const slotDuration = slotEnd.getTime() - slotStart.getTime()
+
+      if (event.repeated === "NEVER") {
+        // Non-repeating events: add each time slot as a single occurrence
+        if (slotStart >= minPastDate && slotStart <= maxFutureDate) {
+          expanded.push({
+            id: event.startTimes.length === 1 ? event.id : `${event.id}-slot-${slotIndex}`,
+            scheduleId: event.scheduleId,
+            scheduleName: event.scheduleName,
+            name: event.name,
+            description: event.description,
+            repeated: event.repeated,
+            repeatUntil: event.repeatUntil,
+            colorToken: event.colorToken,
+            start: slotStart,
+            end: slotEnd,
+            slotIndex,
+          })
+        }
+        continue
+      }
+
+      // Repeating events: generate occurrences for this time slot
+      const repeatEndDate = event.repeatUntil 
+        ? new Date(Math.min(event.repeatUntil.getTime(), maxFutureDate.getTime()))
+        : maxFutureDate
+
+      let currentSlotStart = new Date(slotStart)
+      let occurrenceIndex = 0
+
+      while (currentSlotStart <= repeatEndDate) {
+        // Only include occurrences within our display window
+        if (currentSlotStart >= minPastDate) {
+          const currentSlotEnd = new Date(currentSlotStart.getTime() + slotDuration)
+          
+          expanded.push({
+            id: `${event.id}-slot-${slotIndex}-occ-${occurrenceIndex}`,
+            scheduleId: event.scheduleId,
+            scheduleName: event.scheduleName,
+            name: event.name,
+            description: event.description,
+            repeated: event.repeated,
+            repeatUntil: event.repeatUntil,
+            colorToken: event.colorToken,
+            start: currentSlotStart,
+            end: currentSlotEnd,
+            slotIndex,
+          })
+        }
+
+        // Calculate next occurrence based on repeat frequency
+        currentSlotStart = getNextOccurrence(currentSlotStart, event.repeated)
+        occurrenceIndex++
+
+        // Safety limit to prevent infinite loops
+        if (occurrenceIndex > 500) break
+      }
+    }
+  }
+
+  return expanded
+}
+
+/**
+ * Calculates the next occurrence date based on repeat frequency.
+ */
+function getNextOccurrence(current: Date, frequency: string): Date {
+  const next = new Date(current)
+  
+  switch (frequency) {
+    case "DAILY":
+      next.setDate(next.getDate() + 1)
+      break
+    case "WEEKLY":
+      next.setDate(next.getDate() + 7)
+      break
+    case "MONTHLY":
+      next.setMonth(next.getMonth() + 1)
+      break
+    default:
+      // For "NEVER" or unknown, just return far future to stop iteration
+      next.setFullYear(next.getFullYear() + 100)
+  }
+  
+  return next
 }
 
 type StatCardProps = {

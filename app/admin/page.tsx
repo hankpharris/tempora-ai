@@ -19,6 +19,7 @@ import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { useCallback, useEffect, useState } from "react"
 import { EditModeToggle } from "../../components/EditModeToggle"
+import { ExpandableCell } from "../../components/ExpandableCell"
 import { LogoutButton } from "../../components/LogoutButton"
 import { MovingBlob } from "../../components/MovingBlob"
 
@@ -89,10 +90,29 @@ export default function AdminPage() {
   const handleCellClick = (table: keyof TableData, rowId: string, field: string, value: unknown) => {
     if (!isEditMode) return
     setEditingCell({ table, rowId, field })
+    
+    // Handle arrays (start[] and end[])
+    if (Array.isArray(value)) {
+      // For arrays, convert to JSON for editing
+      const formattedArray = value.map((v) => {
+        if (v instanceof Date || (typeof v === "string" && !isNaN(Date.parse(v)))) {
+          return new Date(v as string).toISOString()
+        }
+        return v
+      })
+      setEditValue(JSON.stringify(formattedArray))
+      return
+    }
+    
     // Format date values for input
-    if (value instanceof Date || (field.includes("At") || field === "start" || field === "end" || field === "emailVerified")) {
-      const dateValue = value instanceof Date ? value : new Date(value as string)
-      setEditValue(dateValue.toISOString().slice(0, 16)) // Format for datetime-local input
+    const isDateField = field.includes("At") || field === "emailVerified" || field === "repeatUntil"
+    if (isDateField) {
+      if (value) {
+        const dateValue = value instanceof Date ? value : new Date(value as string)
+        setEditValue(dateValue.toISOString().slice(0, 16)) // Format for datetime-local input
+      } else {
+        setEditValue("") // Handle null repeatUntil
+      }
     } else {
       setEditValue(String(value || ""))
     }
@@ -133,7 +153,8 @@ export default function AdminPage() {
       editingCell?.rowId === rowId &&
       editingCell?.field === columnKey
 
-    const isDateField = columnKey.includes("At") || columnKey === "start" || columnKey === "end" || columnKey === "emailVerified"
+    const isDateField = columnKey.includes("At") || columnKey === "emailVerified" || columnKey === "repeatUntil"
+    const isDateArrayField = columnKey === "start" || columnKey === "end"
 
     if (isEditing) {
       return (
@@ -166,9 +187,27 @@ export default function AdminPage() {
       )
     }
 
-    // Format date values for display
+    // Format value for display
     let displayValue: string
-    if (isDateField && cellValue) {
+
+    if (Array.isArray(cellValue)) {
+      // Handle arrays (like start[] and end[])
+      if (isDateArrayField) {
+        const formattedDates = cellValue.map((v) => {
+          try {
+            const date = typeof v === "string" ? new Date(v) : v
+            return date instanceof Date && !isNaN(date.getTime())
+              ? date.toLocaleString()
+              : String(v)
+          } catch {
+            return String(v)
+          }
+        })
+        displayValue = formattedDates.join("\n")
+      } else {
+        displayValue = JSON.stringify(cellValue, null, 2)
+      }
+    } else if (isDateField && cellValue) {
       try {
         const date = typeof cellValue === "string" ? new Date(cellValue) : cellValue
         displayValue =
@@ -184,22 +223,20 @@ export default function AdminPage() {
 
     const formattedValue = displayValue.trim() === "" ? "—" : displayValue
 
-    return (
-      <span
-        onClick={() => {
-          if (isEditMode) {
-            handleCellClick(table, rowId, columnKey, cellValue)
-          }
-        }}
-        className={`block min-h-[1.75rem] rounded-xl px-1.5 py-1 text-sm text-foreground/90 transition-colors ${
-          isEditMode
-            ? "cursor-pointer hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-            : ""
-        }`}
-      >
-        {formattedValue}
-      </span>
-    )
+    // If in edit mode, show editable cell
+    if (isEditMode) {
+      return (
+        <div
+          onClick={() => handleCellClick(table, rowId, columnKey, cellValue)}
+          className="min-h-[1.75rem] rounded-xl px-1.5 py-1 text-sm text-foreground/90 cursor-pointer hover:text-primary transition-colors"
+        >
+          <span className="whitespace-pre-wrap">{formattedValue}</span>
+        </div>
+      )
+    }
+
+    // Otherwise, use ExpandableCell component for automatic truncation/expansion
+    return <ExpandableCell value={formattedValue} columnName={columnKey} />
   }
 
   if (status === "loading") {
@@ -228,7 +265,7 @@ export default function AdminPage() {
     users: ["id", "email", "name", "type", "createdAt"],
     friendships: ["user_id1", "user_id2", "status", "createdAt"],
     schedules: ["id", "userId", "name", "createdAt"],
-    events: ["id", "scheduleId", "start", "end", "createdAt"],
+    events: ["id", "scheduleId", "name", "description", "start", "end", "repeated", "repeatUntil", "createdAt"],
   }
 
   const currentData = data[activeTable] || []
@@ -345,8 +382,8 @@ export default function AdminPage() {
                 No data available for {activeTable}
               </div>
             ) : (
-              <div className="overflow-hidden rounded-3xl border border-default/20 shadow-inner">
-                <div className="relative overflow-auto">
+              <div className="rounded-3xl border border-default/20 shadow-inner overflow-visible">
+                <div className="relative overflow-x-auto overflow-y-visible">
                   <Table
                     aria-label={`${activeTable} table`}
                     removeWrapper
