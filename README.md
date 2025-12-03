@@ -1,6 +1,8 @@
 
 ## Tempora AI Calendar
 
+https://tempora-ai.vercel.app/
+
 Tempora is an AI-assisted calendar and scheduling app built on Next.js.  
 It combines a rich multi-view calendar, an operations-ready admin panel, and an AI “copilot” that can inspect and modify a user’s schedules.
 
