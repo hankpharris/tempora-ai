@@ -262,7 +262,7 @@ export default function AdminPage() {
   }
 
   const tableColumns: Record<keyof TableData, string[]> = {
-    users: ["id", "email", "name", "type", "createdAt"],
+    users: ["id", "email", "fname", "lname", "type", "createdAt"],
     friendships: ["user_id1", "user_id2", "status", "createdAt"],
     schedules: ["id", "userId", "name", "createdAt"],
     events: ["id", "scheduleId", "name", "description", "start", "end", "repeated", "repeatUntil", "createdAt"],

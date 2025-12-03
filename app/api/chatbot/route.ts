@@ -80,10 +80,11 @@ const updateEventSchema = z
 
 type UserContext = z.infer<typeof userContextSchema>
 
-function buildSystemPrompt(userContext?: UserContext) {
+function buildSystemPrompt(userContext?: UserContext, userName?: string) {
   const contextInfo = userContext
     ? `
 User Context:
+- Name: ${userName || "Not provided"}
 - Timezone: ${userContext.timezone}
 - Local time: ${userContext.localTime}
 - Locale: ${userContext.locale || "not specified"}
@@ -122,7 +123,8 @@ export async function POST(req: Request) {
     const { messages, userContext } = requestSchema.parse(body)
 
     const userId = session.user.id
-    const systemPrompt = buildSystemPrompt(userContext)
+    const userName = session.user.fname + " " + session.user.lname
+    const systemPrompt = buildSystemPrompt(userContext, userName)
 
     const listSchedulesTool = tool(
       async () => {

@@ -7,7 +7,8 @@ import { prisma } from "@/lib/prisma"
 type UserWithPassword = {
   id: string
   email: string
-  name: string | null
+  fname: string | null
+  lname: string | null
   type: string
   password: string | null
 }
@@ -15,7 +16,8 @@ type UserWithPassword = {
 type AuthorizedUser = {
   id: string
   email: string
-  name: string | null
+  fname: string | null
+  lname: string | null
   type: string
 }
 
@@ -54,7 +56,8 @@ export const authOptions = {
         return {
           id: userWithPassword.id,
           email: userWithPassword.email,
-          name: userWithPassword.name,
+          fname: userWithPassword.fname,
+          lname: userWithPassword.lname,
           type: userWithPassword.type,
         }
       },
@@ -65,12 +68,14 @@ export const authOptions = {
       token,
       user,
     }: {
-      token: { id?: string; type?: string }
+      token: { id?: string; type?: string; fname?: string | null; lname?: string | null }
       user?: AuthorizedUser
     }) {
       if (user) {
         token.id = user.id
         token.type = user.type
+        token.fname = user.fname
+        token.lname = user.lname
       }
       return token
     },
@@ -79,11 +84,13 @@ export const authOptions = {
       token,
     }: {
       session: DefaultSession
-      token: { id?: string; type?: string }
+      token: { id?: string; type?: string; fname?: string | null; lname?: string | null }
     }): Promise<DefaultSession> {
       if (session.user && token.id && token.type) {
         session.user.id = token.id
         session.user.type = token.type
+        session.user.fname = token.fname
+        session.user.lname = token.lname
       }
       return session
     },
