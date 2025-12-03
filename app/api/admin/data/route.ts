@@ -6,7 +6,8 @@ type AdminDataResponse = {
   users: Array<{
     id: string
     email: string
-    name: string | null
+    fname: string | null
+    lname: string | null
     type: string
     createdAt: Date
   }>
@@ -48,7 +49,8 @@ export async function GET() {
         select: {
           id: true,
           email: true,
-          name: true,
+          fname: true,
+          lname: true,
           type: true,
           createdAt: true,
         },

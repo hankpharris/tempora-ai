@@ -17,7 +17,8 @@ model User {
   email         String    @unique
   password      String?   // Encrypted password for credentials auth
   emailVerified DateTime?
-  name          String?
+  fname         String?
+  lname         String?
   image         String?
   type          UserType  @default(USER)
   createdAt     DateTime  @default(now())

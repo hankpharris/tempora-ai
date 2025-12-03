@@ -1,8 +1,8 @@
-import { PrismaClient, UserType, FriendshipStatus, RepeatFrequency } from "@prisma/client"
-import { readFileSync } from "fs"
-import { join } from "path"
+import { FriendshipStatus, PrismaClient, RepeatFrequency, UserType } from "@prisma/client"
 import { parse } from "csv-parse/sync"
 import bcrypt from "bcryptjs"
+import { readFileSync } from "fs"
+import { join } from "path"
 
 const prisma = new PrismaClient()
 
@@ -10,7 +10,8 @@ interface UserRow {
   id: string
   email: string
   emailVerified: string | null
-  name: string | null
+  fname: string | null
+  lname: string | null
   image: string | null
   type: string
   createdAt: string
@@ -79,7 +80,8 @@ async function seed() {
           // Let Prisma auto-generate the cuid() for proper primary key generation
           email: row.email,
           emailVerified: row.emailVerified ? new Date(row.emailVerified) : null,
-          name: row.name || null,
+          fname: row.fname || null,
+          lname: row.lname || null,
           image: row.image || null,
           type: row.type as UserType,
           createdAt: new Date(row.createdAt),
@@ -98,12 +100,14 @@ async function seed() {
       update: {
         password: hashedPassword,
         type: UserType.ADMIN,
-        name: "Henry",
+        fname: "Henry",
+        lname: "Admin",
       },
       create: {
         email: "henry@admin.com",
         password: hashedPassword,
-        name: "Henry",
+        fname: "Henry",
+        lname: "Admin",
         type: UserType.ADMIN,
         emailVerified: new Date(),
       },
