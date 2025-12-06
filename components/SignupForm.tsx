@@ -2,13 +2,14 @@
 
 import { Button, Card, CardBody, CardHeader, Input } from "@heroui/react"
 import { useRouter } from "next/navigation"
-import { signIn } from "next-auth/react"
 import { useState } from "react"
 import Link from "next/link"
 import { MovingBlob } from "./MovingBlob"
 
-export function LoginForm() {
+export function SignupForm() {
   const router = useRouter()
+  const [fname, setFname] = useState("")
+  const [lname, setLname] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -20,21 +21,26 @@ export function LoginForm() {
     setIsLoading(true)
 
     try {
-      const result = await signIn("credentials", {
-        email,
-        password,
-        redirect: false,
+      const res = await fetch("/api/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fname,
+          lname,
+          email,
+          password,
+        }),
       })
 
-      if (result?.error) {
-        setError("Invalid email or password")
-        setIsLoading(false)
-        return
-      }
-
-      if (result?.ok) {
-        router.push("/admin")
+      if (res.ok) {
+        router.push("/login")
         router.refresh()
+      } else {
+        const data = await res.json()
+        setError(data.error || "Registration failed")
+        setIsLoading(false)
       }
     } catch {
       setError("An error occurred. Please try again.")
@@ -76,15 +82,68 @@ export function LoginForm() {
       <Card className="relative z-10 w-full max-w-xl rounded-3xl border border-primary/20 bg-content1/90 shadow-2xl backdrop-blur-xl dark:border-primary/30 dark:bg-content1/80">
         <CardHeader className="flex flex-col gap-2 px-8 pt-8 pb-4 sm:px-10 sm:pt-10">
           <span className="text-sm font-medium uppercase tracking-[0.2em] text-primary/80">
-            Welcome back
+            Get Started
           </span>
-          <h1 className="text-3xl font-semibold text-foreground">Log In</h1>
+          <h1 className="text-3xl font-semibold text-foreground">Create Account</h1>
           <p className="text-sm text-default-600">
-            Enter your credentials to view schedules, events, and use temporaAI.
+            Enter your details to create a new account.
           </p>
         </CardHeader>
         <CardBody className="gap-6 px-8 pb-8 pt-4 sm:px-10 sm:pb-10">
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+            <div className="flex gap-4">
+              <div className="flex flex-1 flex-col gap-2">
+                <label
+                  htmlFor="fname"
+                  className="text-sm font-semibold tracking-wide text-default-600"
+                >
+                  First Name
+                </label>
+                <Input
+                  id="fname"
+                  type="text"
+                  value={fname}
+                  onChange={(e) => setFname(e.target.value)}
+                  variant="bordered"
+                  radius="lg"
+                  color="primary"
+                  isRequired
+                  placeholder="John"
+                  classNames={{
+                    inputWrapper:
+                      "bg-content1/80 border border-primary/30 hover:border-primary/50 focus-within:border-primary shadow-sm ps-3",
+                    innerWrapper: "gap-3",
+                    input: "text-base text-foreground pr-2",
+                  }}
+                />
+              </div>
+              <div className="flex flex-1 flex-col gap-2">
+                <label
+                  htmlFor="lname"
+                  className="text-sm font-semibold tracking-wide text-default-600"
+                >
+                  Last Name
+                </label>
+                <Input
+                  id="lname"
+                  type="text"
+                  value={lname}
+                  onChange={(e) => setLname(e.target.value)}
+                  variant="bordered"
+                  radius="lg"
+                  color="primary"
+                  isRequired
+                  placeholder="Doe"
+                  classNames={{
+                    inputWrapper:
+                      "bg-content1/80 border border-primary/30 hover:border-primary/50 focus-within:border-primary shadow-sm ps-3",
+                    innerWrapper: "gap-3",
+                    input: "text-base text-foreground pr-2",
+                  }}
+                />
+              </div>
+            </div>
+
             <div className="flex flex-col gap-2">
               <label
                 htmlFor="email"
@@ -146,8 +205,8 @@ export function LoginForm() {
                 radius="lg"
                 color="primary"
                 isRequired
-                autoComplete="current-password"
-                placeholder="Enter your secure key"
+                autoComplete="new-password"
+                placeholder="Create a password"
                 classNames={{
                   inputWrapper:
                     "bg-content1/80 border border-primary/30 hover:border-primary/50 focus-within:border-primary shadow-sm ps-1",
@@ -183,13 +242,13 @@ export function LoginForm() {
               radius="lg"
               className="w-full rounded-2xl font-semibold shadow-lg shadow-primary/30"
             >
-              Sign In
+              Create Account
             </Button>
 
             <p className="text-center text-sm text-default-500">
-              Don&apos;t have an account?{" "}
-              <Link href="/signup" className="font-semibold text-primary hover:underline">
-                Sign up
+              Already have an account?{" "}
+              <Link href="/login" className="font-semibold text-primary hover:underline">
+                Sign in
               </Link>
             </p>
           </form>

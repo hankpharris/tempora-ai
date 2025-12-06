@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion"
 import { useSession } from "next-auth/react"
+import Link from "next/link"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 type ChatRole = "assistant" | "user" | "system"
@@ -388,11 +389,19 @@ export function ChatbotDock() {
                   </div>
                 ) : null}
                 {!isAuthenticated && !sessionLoading ? (
-                  <p className="text-xs text-default-500">
-                    Sign in to let the assistant inspect and update your schedules securely.
-                  </p>
-                ) : null}
-                <form className="space-y-3" onSubmit={handleSubmit}>
+                  <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-default/20 bg-default-50 p-6 text-center">
+                    <p className="text-sm text-default-600">
+                      Please log in to chat with Tempora and manage your schedule.
+                    </p>
+                    <Link
+                      href="/login"
+                      className="rounded-full bg-primary px-6 py-2 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition hover:bg-primary/90"
+                    >
+                      Log In
+                    </Link>
+                  </div>
+                ) : (
+                  <form className="space-y-3" onSubmit={handleSubmit}>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -484,6 +493,7 @@ export function ChatbotDock() {
                     </button>
                   </div>
                 </form>
+                )}
               </div>
             </motion.aside>
           </>
