@@ -1,11 +1,16 @@
 "use client"
 
-import { useState } from "react"
+import React, { useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 
 type RepeatOption = "NEVER" | "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY"
 
 type CreateEventOverlayTriggerProps = {
   triggerClassName?: string
+  triggerLabel?: string
+  initialStart?: string
+  initialEnd?: string
+  onSubmit?: (eventData: any) => void
 }
 
 function toLocalInputValue(date: Date) {
@@ -15,9 +20,9 @@ function toLocalInputValue(date: Date) {
 }
 
 function splitLocalInputValue(dtLocal: string) {
-  // dtLocal is like 2025-12-05T14:00
   const [date, time] = dtLocal.split("T")
-  return { date, time: time ?? "00:00" }
+  const shortTime = time ? time.slice(0, 5) : "00:00"
+  return { date, time: shortTime }
 }
 
 function getDefaultDateTimes() {
@@ -27,373 +32,199 @@ function getDefaultDateTimes() {
   return { start: toLocalInputValue(start), end: toLocalInputValue(end) }
 }
 
-export function CreateEventOverlayTrigger({ triggerClassName }: CreateEventOverlayTriggerProps) {
+function combineLocalDateTimeToISO(dateStr?: string, timeStr?: string) {
+  const d = dateStr ?? new Date().toISOString().slice(0, 10)
+  const t = timeStr ?? "00:00"
+  return new Date(`${d}T${t}`).toISOString()
+}
+
+export function CreateEventOverlayTrigger({
+  triggerClassName,
+  triggerLabel,
+  initialStart,
+  initialEnd,
+  onSubmit,
+}: CreateEventOverlayTriggerProps) {
   const defaults = getDefaultDateTimes()
+  const startInit = initialStart ? toLocalInputValue(new Date(initialStart)) : defaults.start
+  const endInit = initialEnd ? toLocalInputValue(new Date(initialEnd)) : defaults.end
+
+  const startSplit = splitLocalInputValue(startInit)
+  const endSplit = splitLocalInputValue(endInit)
+
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  // Split start/end into date + time inputs for cleaner UI
-  const startSplit = splitLocalInputValue(defaults.start)
-  const endSplit = splitLocalInputValue(defaults.end)
-  const [startDate, setStartDate] = useState(startSplit.date)
+
+  const [date, setDate] = useState(startSplit.date)
   const [startTime, setStartTime] = useState(startSplit.time)
-  const [endDate, setEndDate] = useState(endSplit.date)
   const [endTime, setEndTime] = useState(endSplit.time)
 
   const [repeat, setRepeat] = useState<RepeatOption>("NEVER")
   const [repeatInterval, setRepeatInterval] = useState<number>(1)
-  const [weeklyDays, setWeeklyDays] = useState<Record<string, boolean>>({
-    MO: false,
-    TU: false,
-    WE: false,
-    TH: false,
-    FR: true,
-    SA: false,
-    SU: false,
-  })
 
-  const [monthlyDay, setMonthlyDay] = useState<number | "">(new Date().getDate())
-  const [repeatEndMode, setRepeatEndMode] = useState<"NEVER" | "UNTIL" | "AFTER">("NEVER")
-  const [repeatUntil, setRepeatUntil] = useState("")
-  const [repeatAfterCount, setRepeatAfterCount] = useState<number | "">(3)
+  const [portalEl, setPortalEl] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    const el = document.createElement("div")
+    el.setAttribute("data-create-event-portal", "")
+    document.body.appendChild(el)
+    setPortalEl(el)
+    return () => {
+      if (document.body.contains(el)) document.body.removeChild(el)
+      setPortalEl(null)
+    }
+  }, [])
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    // Hook up your API call here; closing for now to mimic completion.
-    setOpen(false)
-  }
-
-  const handleOpen = () => {
-    const reset = getDefaultDateTimes()
+  const openModal = () => {
     setName("")
     setDescription("")
-    const s = splitLocalInputValue(reset.start)
-    const e = splitLocalInputValue(reset.end)
-    setStartDate(s.date)
-    setStartTime(s.time)
-    setEndDate(e.date)
-    setEndTime(e.time)
+    setDate(startSplit.date)
+    setStartTime(startSplit.time)
+    setEndTime(endSplit.time)
     setRepeat("NEVER")
     setRepeatInterval(1)
-    setWeeklyDays({ MO: false, TU: false, WE: false, TH: false, FR: true, SA: false, SU: false })
-    setMonthlyDay(new Date().getDate())
-    setRepeatEndMode("NEVER")
-    setRepeatUntil("")
-    setRepeatAfterCount(3)
     setOpen(true)
   }
 
-  const handleClose = () => setOpen(false)
+  const closeModal = () => setOpen(false)
 
-  return (
-    <>
-      <button
-        type="button"
-        onClick={handleOpen}
-        className={triggerClassName}
-      >
-        Create event
-      </button>
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const startISO = combineLocalDateTimeToISO(date, startTime)
+    const endISO = combineLocalDateTimeToISO(date, endTime)
+    const eventObj = {
+      title: name,
+      description,
+      start: startISO,
+      end: endISO,
+      recurrence: repeat === "NEVER" ? null : { freq: repeat, interval: repeatInterval },
+    }
+    if (onSubmit) onSubmit(eventObj)
+    setOpen(false)
+  }
 
-      {open ? (
-        <div className="fixed inset-0 z-[60] bg-background/80 backdrop-blur-xl overflow-auto">
-          <div className="absolute left-0 top-0 p-4">
+  const dialog = (
+    <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
+      <div className="relative w-full max-w-4xl bg-content1/90 rounded-2xl border border-primary/12 shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-3 border-b border-primary/10 bg-content1/95">
+          <div>
+            <p className="text-xs uppercase tracking-[0.28em] text-primary/70">New event</p>
+            <h3 className="text-lg font-semibold text-foreground">Create event</h3>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={(e) => { /* also submit via form */ const form = document.getElementById('create-event-form') as HTMLFormElement | null; form?.requestSubmit() }} className="inline-flex h-9 items-center gap-2 rounded-md border bg-primary/90 px-4 text-sm font-semibold text-white">Save</button>
             <button
               type="button"
               aria-label="Close overlay"
-              onClick={handleClose}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-default/30 bg-content1/70 text-sm font-semibold text-foreground shadow-md transition hover:scale-105 hover:border-default/50 hover:bg-content1/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              onClick={closeModal}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border bg-content1/70 text-sm text-foreground shadow-sm"
             >
-              X
+              ×
             </button>
           </div>
+        </div>
 
-          <div className="flex min-h-screen w-full items-start md:items-center justify-center px-6 py-10">
-            <div
-              role="dialog"
-              aria-modal="true"
-              className="w-full max-w-2xl rounded-3xl border border-primary/20 bg-content1/85 p-6 shadow-2xl backdrop-blur-2xl max-h-[calc(100vh-4rem)] overflow-auto"
-            >
-              <div className="flex flex-col gap-2">
-                <p className="text-xs uppercase tracking-[0.3em] text-primary/70">New entry</p>
-                <h3 className="text-2xl font-semibold text-foreground">Create event</h3>
-                <p className="text-sm text-default-600">
-                  Capture the essentials so we can place your event across month, week, and day
-                  views.
-                </p>
+        {/* Body */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6">
+          {/* Main form */}
+          <div className="md:col-span-2">
+            <form id="create-event-form" onSubmit={handleSubmit} className="space-y-6">
+              {/* Event name */}
+              <div>
+                <label htmlFor="event-name" className="block text-xs uppercase tracking-[0.22em] text-default-500 mb-2">Event name</label>
+                <input
+                  id="event-name"
+                  name="name"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Add a title"
+                  className="w-full h-11 rounded-lg border border-default/20 bg-content1/80 px-4 py-2 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40"
+                />
               </div>
 
-              <form onSubmit={handleSubmit} className="mt-6 space-y-6">
-                <div className="grid gap-6 md:grid-cols-[1.6fr,1fr]">
-                  <div className="space-y-4 rounded-2xl border border-default/15 bg-background/70 p-5 shadow-inner">
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="event-name"
-                        className="text-xs uppercase tracking-[0.25em] text-default-500"
-                      >
-                        Event name
-                      </label>
-                      <input
-                        id="event-name"
-                        name="name"
-                        required
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Team sync"
-                        className="w-full rounded-xl border border-default/25 bg-content1/80 px-4 py-3 text-base font-semibold text-foreground shadow-inner shadow-primary/5 placeholder:text-default-400 focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      />
-                    </div>
+              {/* Schedule card */}
+              <div className="rounded-xl border border-primary/10 bg-background/60 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs uppercase tracking-[0.22em] text-primary/70">Schedule</span>
+                </div>
 
-                    <div className="space-y-2">
-                      <label
-                        htmlFor="event-description"
-                        className="text-xs uppercase tracking-[0.25em] text-default-500"
-                      >
-                        Details
-                      </label>
-                      <textarea
-                        id="event-description"
-                        name="description"
-                        rows={5}
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="What is the focus of this session?"
-                        className="w-full rounded-xl border border-default/25 bg-content1/80 px-4 py-3 text-sm text-foreground shadow-inner shadow-primary/5 placeholder:text-default-400 focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      />
-                    </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-default-500 mb-2">Date</label>
+                    <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full h-10 rounded-lg border border-default/20 bg-background/70 px-3 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40" />
                   </div>
 
-                  <div className="space-y-4 rounded-2xl border border-primary/15 bg-content1/70 p-5 shadow-inner">
-                    <div className="flex items-center justify-between text-xs uppercase tracking-[0.3em] text-primary/70">
-                      <span>Schedule</span>
-                      <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold text-primary/90">
-                        Busy
-                      </span>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label htmlFor="event-start-date" className="text-[11px] uppercase tracking-[0.25em] text-default-500">Date</label>
-                          <input
-                            id="event-start-date"
-                            type="date"
-                            required
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="w-full rounded-xl border border-default/25 bg-background/70 px-3 py-2.5 text-sm text-foreground focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                          />
-                        </div>
-
-                        <div>
-                          <label htmlFor="event-start-time" className="text-[11px] uppercase tracking-[0.25em] text-default-500">Time</label>
-                          <input
-                            id="event-start-time"
-                            type="time"
-                            required
-                            value={startTime}
-                            onChange={(e) => setStartTime(e.target.value)}
-                            className="w-full rounded-xl border border-default/25 bg-background/70 px-3 py-2.5 text-sm text-foreground focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                          />
-                        </div>
+                  <div>
+                    <label className="block text-xs text-default-500 mb-2">Time</label>
+                    <div className="flex gap-3">
+                      <div className="flex-1">
+                        <div className="text-xs text-default-500 mb-1">Start time</div>
+                        <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full h-10 rounded-lg border border-default/20 bg-background/70 px-3 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40" />
                       </div>
-
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label htmlFor="event-end-date" className="text-[11px] uppercase tracking-[0.25em] text-default-500">Date</label>
-                          <input
-                            id="event-end-date"
-                            type="date"
-                            required
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className="w-full rounded-xl border border-default/25 bg-background/70 px-3 py-2.5 text-sm text-foreground focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                          />
-                        </div>
-
-                        <div>
-                          <label htmlFor="event-end-time" className="text-[11px] uppercase tracking-[0.25em] text-default-500">Time</label>
-                          <input
-                            id="event-end-time"
-                            type="time"
-                            required
-                            value={endTime}
-                            onChange={(e) => setEndTime(e.target.value)}
-                            className="w-full rounded-xl border border-default/25 bg-background/70 px-3 py-2.5 text-sm text-foreground focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <label htmlFor="event-repeat" className="text-[11px] uppercase tracking-[0.25em] text-default-500">Repeat</label>
-                          <span className="text-xs text-default-400">Preview</span>
-                        </div>
-
-                        <div className="flex gap-3">
-                          <select
-                            id="event-repeat"
-                            name="repeat"
-                            value={repeat}
-                            onChange={(e) => setRepeat(e.target.value as RepeatOption)}
-                            className="w-2/4 rounded-xl border border-default/25 bg-background/70 px-3 py-2.5 text-sm font-semibold text-foreground focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                          >
-                            <option value="NEVER">Does not repeat</option>
-                            <option value="DAILY">Daily</option>
-                            <option value="WEEKLY">Weekly</option>
-                            <option value="MONTHLY">Monthly</option>
-                            <option value="YEARLY">Yearly</option>
-                          </select>
-
-                          <input
-                            type="number"
-                            min={1}
-                            value={repeatInterval}
-                            onChange={(e) => setRepeatInterval(Math.max(1, Number(e.target.value) || 1))}
-                            className="w-1/4 rounded-xl border border-default/25 bg-background/70 px-3 py-2.5 text-sm text-foreground focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                            aria-label="Repeat every N"
-                          />
-
-                          <div className="flex-1 text-sm text-default-500 flex items-center">
-                            {repeat === "NEVER" ? (
-                              <span className="text-default-400">No recurrence</span>
-                            ) : repeat === "DAILY" ? (
-                              <span>Every {repeatInterval} day(s)</span>
-                            ) : repeat === "WEEKLY" ? (
-                              <span>Every {repeatInterval} week(s)</span>
-                            ) : repeat === "MONTHLY" ? (
-                              <span>Every {repeatInterval} month(s)</span>
-                            ) : (
-                              <span>Every {repeatInterval} year(s)</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Weekly weekday selectors */}
-                        {repeat === "WEEKLY" && (
-                          <div className="flex flex-wrap gap-2">
-                            {[
-                              ["MO", "Mon"],
-                              ["TU", "Tue"],
-                              ["WE", "Wed"],
-                              ["TH", "Thu"],
-                              ["FR", "Fri"],
-                              ["SA", "Sat"],
-                              ["SU", "Sun"],
-                            ].map(([code, label]) => (
-                              <button
-                                key={code}
-                                type="button"
-                                onClick={() =>
-                                  setWeeklyDays((prev) => ({ ...prev, [code as string]: !prev[code as string] }))
-                                }
-                                className={`rounded-full px-3 py-1 text-sm font-semibold transition ${weeklyDays[code as string] ? 'bg-primary/90 text-white' : 'bg-background/70 text-default-700 border border-default/15'}`}
-                              >
-                                {label}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Monthly option: day of month */}
-                        {repeat === "MONTHLY" && (
-                          <div className="flex items-center gap-3">
-                            <label className="text-sm text-default-500">Day</label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={31}
-                              value={monthlyDay}
-                              onChange={(e) => setMonthlyDay(Number(e.target.value) || 1)}
-                              className="w-24 rounded-xl border border-default/25 bg-background/70 px-3 py-2 text-sm text-foreground focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                            />
-                            <span className="text-sm text-default-400">of each month</span>
-                          </div>
-                        )}
-
-                        {/* Repeat end modes */}
-                        {repeat !== "NEVER" && (
-                          <div className="space-y-2 pt-2">
-                            <div className="flex items-center gap-3">
-                              <label className="inline-flex items-center gap-2 text-sm">
-                                <input
-                                  type="radio"
-                                  name="repeat-end"
-                                  checked={repeatEndMode === "NEVER"}
-                                  onChange={() => setRepeatEndMode("NEVER")}
-                                />
-                                <span className="text-sm">Never</span>
-                              </label>
-
-                              <label className="inline-flex items-center gap-2 text-sm">
-                                <input
-                                  type="radio"
-                                  name="repeat-end"
-                                  checked={repeatEndMode === "UNTIL"}
-                                  onChange={() => setRepeatEndMode("UNTIL")}
-                                />
-                                <span className="text-sm">Until</span>
-                              </label>
-
-                              <label className="inline-flex items-center gap-2 text-sm">
-                                <input
-                                  type="radio"
-                                  name="repeat-end"
-                                  checked={repeatEndMode === "AFTER"}
-                                  onChange={() => setRepeatEndMode("AFTER")}
-                                />
-                                <span className="text-sm">After</span>
-                              </label>
-                            </div>
-
-                            {repeatEndMode === "UNTIL" && (
-                              <input
-                                type="date"
-                                value={repeatUntil}
-                                onChange={(e) => setRepeatUntil(e.target.value)}
-                                className="w-48 rounded-xl border border-default/25 bg-background/70 px-3 py-2 text-sm text-foreground focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                              />
-                            )}
-
-                            {repeatEndMode === "AFTER" && (
-                              <div className="flex items-center gap-3">
-                                <input
-                                  type="number"
-                                  min={1}
-                                  value={repeatAfterCount}
-                                  onChange={(e) => setRepeatAfterCount(Number(e.target.value) || 1)}
-                                  className="w-28 rounded-xl border border-default/25 bg-background/70 px-3 py-2 text-sm text-foreground focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                                />
-                                <span className="text-sm text-default-400">occurrence(s)</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                      <div className="flex-1">
+                        <div className="text-xs text-default-500 mb-1">End time</div>
+                        <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full h-10 rounded-lg border border-default/20 bg-background/70 px-3 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40" />
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleClose}
-                    className="inline-flex items-center rounded-xl border border-default/20 bg-content1/60 px-4 py-2 text-sm font-semibold text-default-700 shadow-sm transition hover:border-default/40 hover:bg-content1/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="inline-flex items-center rounded-xl border border-primary/30 bg-primary/90 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-primary/30 transition hover:-translate-y-[1px] hover:bg-primary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                  >
-                    Save event
-                  </button>
+                <div className="mt-2 flex items-center gap-3">
+                  <select value={repeat} onChange={(e) => setRepeat(e.target.value as RepeatOption)} className="rounded-lg border border-default/20 px-3 py-2 text-sm w-44 bg-content1/80 focus:outline-none focus:ring-0 focus:border-primary/40">
+                    <option value="NEVER">Does not repeat</option>
+                    <option value="DAILY">Daily</option>
+                    <option value="WEEKLY">Weekly</option>
+                    <option value="MONTHLY">Monthly</option>
+                    <option value="YEARLY">Yearly</option>
+                  </select>
+
+                  <input type="number" min={1} value={repeatInterval} onChange={(e) => setRepeatInterval(Math.max(1, Number(e.target.value) || 1))} className="w-20 h-10 rounded-lg border border-default/20 bg-background/70 px-3 text-sm focus:outline-none focus:ring-0 focus:border-primary/40" />
+
+                  <div className="ml-auto text-sm text-default-500">{repeat === "NEVER" ? 'No recurrence' : `Every ${repeatInterval} ${repeat.toLowerCase()}`}</div>
                 </div>
-              </form>
-            </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label htmlFor="event-description" className="block text-xs uppercase tracking-[0.22em] text-default-500 mb-2">Details</label>
+                <textarea id="event-description" rows={5} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Add notes or agenda" className="w-full rounded-lg border border-default/20 bg-content1/80 px-3 py-3 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40" />
+              </div>
+
+              {/* Bottom actions (keep only Cancel since Save exists in header) */}
+              <div className="flex items-center justify-end gap-3">
+                {/* Intentionally only one Cancel/Close control (header ×) to avoid duplicate actions */}
+                <div />
+              </div>
+            </form>
           </div>
+
+          {/* Right preview / summary */}
+          <aside className="md:col-span-1">
+            <div className="rounded-xl border border-primary/8 bg-background/60 p-4 h-full flex flex-col gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-primary/70 mb-2">When</p>
+                <div className="text-sm text-foreground">
+                  <div className="font-semibold">{name || 'Untitled event'}</div>
+                  <div className="text-default-500 mt-2">{date} {startTime} — {date} {endTime}</div>
+                </div>
+              </div>
+
+              <div className="mt-auto text-xs text-default-500">Recurrence: {repeat === 'NEVER' ? 'None' : `${repeatInterval}× ${repeat}`}</div>
+            </div>
+          </aside>
         </div>
-      ) : null}
+      </div>
+    </div>
+  )
+
+  return (
+    <>
+      <button type="button" onClick={openModal} className={triggerClassName}>{triggerLabel ?? "Create event"}</button>
+      {open && portalEl ? createPortal(dialog, portalEl) : null}
     </>
   )
 }
+
