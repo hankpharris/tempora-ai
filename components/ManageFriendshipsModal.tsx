@@ -1,23 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import {
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-  Button,
-  Input,
-  Tabs,
-  Tab,
-  User as UserAvatar,
-  Card,
-  CardBody,
-  Chip,
-  Spinner
-} from "@heroui/react"
+import { Button, Chip, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spinner, Tab, Tabs, User as UserAvatar } from "@heroui/react"
 import { useSession } from "next-auth/react"
+import { useCallback, useEffect, useState } from "react"
 
 type FriendshipStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "BLOCKED" | "NONE"
 
@@ -59,7 +44,7 @@ export function ManageFriendshipsModal({ isOpen, onOpenChange }: ManageFriendshi
       setIsLoadingRequests(true)
       const res = await fetch("/api/friends/pending")
       if (res.ok) {
-        const data = await res.json()
+        const data = (await res.json()) as Friendship[]
         setPendingRequests(data)
       }
     } catch (error) {
@@ -75,7 +60,7 @@ export function ManageFriendshipsModal({ isOpen, onOpenChange }: ManageFriendshi
       setIsLoadingFriends(true)
       const res = await fetch("/api/friends/list")
       if (res.ok) {
-        const data = await res.json()
+        const data = (await res.json()) as User[]
         setFriendsList(data)
       }
     } catch (error) {
@@ -104,7 +89,7 @@ export function ManageFriendshipsModal({ isOpen, onOpenChange }: ManageFriendshi
       try {
         const res = await fetch(`/api/friends/search?query=${encodeURIComponent(searchQuery)}`)
         if (res.ok) {
-          const data = await res.json()
+          const data = (await res.json()) as User[]
           setSearchResults(data)
         }
       } catch (error) {
@@ -206,7 +191,7 @@ export function ManageFriendshipsModal({ isOpen, onOpenChange }: ManageFriendshi
                         </div>
                       ))
                     ) : (
-                      <div className="text-center text-default-500 py-4">You have no friends yet. Use the 'Add Friend' tab to search!</div>
+                      <div className="text-center text-default-500 py-4">You have no friends yet. Use the &apos;Add Friend&apos; tab to search!</div>
                     )}
                   </div>
                 </Tab>

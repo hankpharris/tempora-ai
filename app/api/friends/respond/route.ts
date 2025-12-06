@@ -1,6 +1,6 @@
+import { NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
   const session = await auth()
@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { requesterId, action } = await request.json()
+  const { requesterId, action } = (await request.json()) as { requesterId: string; action: string }
 
   if (!requesterId) {
     return NextResponse.json({ error: "Missing requesterId" }, { status: 400 })

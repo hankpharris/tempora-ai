@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
 import { Button } from "@heroui/react"
-import { ManageFriendshipsModal } from "./ManageFriendshipsModal"
+import { useState } from "react"
 import { twMerge } from "tailwind-merge"
+import { ManageFriendshipsModal } from "./ManageFriendshipsModal"
 
 interface ManageFriendshipsButtonProps {
   className?: string
