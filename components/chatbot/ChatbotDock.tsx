@@ -1,8 +1,8 @@
 "use client"
 
 import { AnimatePresence, motion } from "framer-motion"
-import { useSession } from "next-auth/react"
 import Link from "next/link"
+import { useSession } from "next-auth/react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
 type ChatRole = "assistant" | "user" | "system"
@@ -83,6 +83,7 @@ function MessageContent({ content }: { content: string | ContentPart[] }) {
         }
         if (part.type === "image_url") {
           return (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               key={index}
               src={part.image_url.url}
@@ -416,6 +417,7 @@ export function ChatbotDock() {
                     <div className="flex flex-wrap gap-2 rounded-xl border border-default/20 bg-default-50/50 p-2">
                       {attachedImages.map((img) => (
                         <div key={img.id} className="group relative">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={img.dataUrl}
                             alt={img.name}

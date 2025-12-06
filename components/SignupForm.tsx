@@ -1,9 +1,9 @@
 "use client"
 
 import { Button, Card, CardBody, CardHeader, Input } from "@heroui/react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
-import Link from "next/link"
 import { MovingBlob } from "./MovingBlob"
 
 export function SignupForm() {
@@ -38,7 +38,7 @@ export function SignupForm() {
         router.push("/login")
         router.refresh()
       } else {
-        const data = await res.json()
+        const data = (await res.json()) as { error?: string }
         setError(data.error || "Registration failed")
         setIsLoading(false)
       }
