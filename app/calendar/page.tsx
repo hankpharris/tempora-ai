@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 import { ExpandableEventCard } from "@/components/ExpandableEventCard"
-import { CreateEventOverlayTrigger } from "@/components/CreateEventOverlayTrigger"
+import { CreateEventOverlayTriggerClient } from "@/components/CreateEventOverlayTriggerClient"
 import { MovingBlob } from "@/components/MovingBlob"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -331,7 +331,7 @@ export default async function CalendarPage() {
                 <p className="text-xs uppercase tracking-[0.4em] text-default-500">
                   Scroll ↓ for weekly focus
                 </p>
-                <CreateEventOverlayTrigger
+                <CreateEventOverlayTriggerClient
                   triggerClassName="ml-auto inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-5 py-2 text-sm font-semibold text-primary/90 shadow-inner shadow-primary/10 backdrop-blur-sm transition hover:border-primary/50 hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                 />
               </div>

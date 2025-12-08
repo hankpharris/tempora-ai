@@ -3,14 +3,25 @@
 import React, { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 
-type RepeatOption = "NEVER" | "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY"
+type RepeatOption = "NEVER" | "DAILY" | "WEEKLY" | "MONTHLY"
+
+export type TimeSlot = { start: string; end: string }
+
+export type CreateEventPayload = {
+  name: string
+  description?: string
+  timeSlots: TimeSlot[]
+  repeated?: "NEVER" | "DAILY" | "WEEKLY" | "MONTHLY"
+  repeatUntil?: string | null
+  scheduleId?: string
+}
 
 type CreateEventOverlayTriggerProps = {
   triggerClassName?: string
   triggerLabel?: string
   initialStart?: string
   initialEnd?: string
-  onSubmit?: (eventData: any) => void
+  onCreateEvent?: (payload: CreateEventPayload) => Promise<unknown>
 }
 
 function toLocalInputValue(date: Date) {
@@ -43,7 +54,7 @@ export function CreateEventOverlayTrigger({
   triggerLabel,
   initialStart,
   initialEnd,
-  onSubmit,
+  onCreateEvent,
 }: CreateEventOverlayTriggerProps) {
   const defaults = getDefaultDateTimes()
   const startInit = initialStart ? toLocalInputValue(new Date(initialStart)) : defaults.start
@@ -67,6 +78,8 @@ export function CreateEventOverlayTrigger({
   const [reminder, setReminder] = useState(false)
 
   const [portalEl, setPortalEl] = useState<HTMLElement | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
   useEffect(() => {
     const el = document.createElement("div")
     el.setAttribute("data-create-event-portal", "")
@@ -94,26 +107,63 @@ export function CreateEventOverlayTrigger({
 
   const closeModal = () => setOpen(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setFormError(null)
+
+    if (!name || name.trim().length === 0) {
+      setFormError("Event title is required")
+      return
+    }
+
     const startISO = combineLocalDateTimeToISO(date, startTime)
     const endISO = combineLocalDateTimeToISO(date, endTime)
-    const eventObj = {
-      title: name,
-      description,
-      start: startISO,
-      end: endISO,
-      recurrence: repeat === "NEVER" ? null : { 
-        freq: repeat, 
-        interval: 1,
-        until: repeatUntil ? new Date(repeatUntil).toISOString() : null
-      },
-      color,
-      location,
-      reminder,
+
+    const startDate = new Date(startISO)
+    const endDate = new Date(endISO)
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      setFormError("Invalid start or end time")
+      return
     }
-    if (onSubmit) onSubmit(eventObj)
-    setOpen(false)
+
+    if (endDate <= startDate) {
+      setFormError("End time must be after start time")
+      return
+    }
+
+    const repeatUntilISO = repeatUntil ? new Date(repeatUntil).toISOString() : null
+    if (repeat !== "NEVER" && repeatUntilISO) {
+      const repeatUntilDate = new Date(repeatUntilISO)
+      if (repeatUntilDate <= startDate) {
+        setFormError("Repeat-until must be after the first time slot")
+        return
+      }
+    }
+
+    const payload: CreateEventPayload = {
+      name: name.trim(),
+      description: description?.trim() || undefined,
+      timeSlots: [{ start: startISO, end: endISO }],
+      repeated: repeat ?? "NEVER",
+      repeatUntil: repeat === "NEVER" ? undefined : repeatUntilISO,
+    }
+
+    if (!onCreateEvent) {
+      // No handler provided — fail fast but don't perform DB work here
+      setFormError("No handler provided to create events")
+      return
+    }
+
+    try {
+      setIsSubmitting(true)
+      await onCreateEvent(payload)
+      setOpen(false)
+    } catch (err: any) {
+      setFormError(err?.message || "Failed to create event")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const dialog = (
@@ -190,7 +240,6 @@ export function CreateEventOverlayTrigger({
                     <option value="DAILY">Daily</option>
                     <option value="WEEKLY">Weekly</option>
                     <option value="MONTHLY">Monthly</option>
-                    <option value="YEARLY">Yearly</option>
                   </select>
 
                   {repeat !== "NEVER" && (
@@ -217,7 +266,17 @@ export function CreateEventOverlayTrigger({
               {/* Bottom actions: Save placed bottom-left */}
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <button type="submit" className="inline-flex items-center rounded-md border bg-primary/90 px-4 py-2 text-sm font-semibold text-white">Save</button>
+                  {formError && (
+                    <div className="text-sm text-danger mb-2">{formError}</div>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    aria-busy={isSubmitting}
+                    className={`inline-flex items-center rounded-md border px-4 py-2 text-sm font-semibold text-white ${isSubmitting ? "bg-primary/60" : "bg-primary/90"}`}
+                  >
+                    {isSubmitting ? "Saving…" : "Save"}
+                  </button>
                 </div>
                 <div />
               </div>
