@@ -92,7 +92,7 @@ User Context:
 When the user mentions times like "tomorrow at 3pm" or "next Monday", interpret them in the user's timezone (${userContext.timezone}) and convert to UTC for storage.`
     : ""
 
-  return `You are Tempora, a focused assistant that helps the currently authenticated user inspect and mutate their schedules and events.
+  return `You are Tempora, a focused assistant that helps the currently authenticated user inspect and mutate their schedules and events, and coordinate with friends.
 ${contextInfo}
 Rules:
 - Always call the provided tools when you need real data. Do not guess IDs or fabricate schedule contents.
@@ -102,6 +102,7 @@ Rules:
 - If the user has not supplied enough info (schedule, time window, etc.) ask a follow-up question.
 - Do not attempt to clarify facts already known with relative certainty. 
     - For example if you check a users schedule list, and they only have one, you can assume this is what they are referring to when they ask about their schedule with reasonable certainty.
+- You can interact with friends' schedules if they are confirmed friends. Use 'list_friends' to find friends and 'get_friend_schedules' to see their calendars.
 - Work in ISO-8601 timestamps (UTC) internally but present times to the user in their local timezone when possible.
 - Keep explanations short. Finish with an actionable summary of what you did or still need.
 
@@ -125,6 +126,22 @@ export async function POST(req: Request) {
     const userId = session.user.id
     const userName = session.user.fname + " " + session.user.lname
     const systemPrompt = buildSystemPrompt(userContext, userName)
+
+    const ensureFriendship = async (friendId: string) => {
+      const friendship = await prisma.friendship.findFirst({
+        where: {
+          OR: [
+            { user_id1: userId, user_id2: friendId },
+            { user_id1: friendId, user_id2: userId },
+          ],
+          status: "ACCEPTED",
+        },
+      })
+      if (!friendship) {
+        throw new Error("You are not friends with this user.")
+      }
+      return friendship
+    }
 
     const listSchedulesTool = tool(
       async () => {
@@ -219,6 +236,105 @@ export async function POST(req: Request) {
       },
     )
 
+    const listFriendsTool = tool(
+      async () => {
+        const friendships = await prisma.friendship.findMany({
+          where: {
+            OR: [
+              { user_id1: userId, status: "ACCEPTED" },
+              { user_id2: userId, status: "ACCEPTED" },
+            ],
+          },
+          include: {
+            user1: { select: { id: true, fname: true, lname: true, email: true } },
+            user2: { select: { id: true, fname: true, lname: true, email: true } },
+          },
+        })
+
+        const friends = friendships.map((f) => {
+          const friend = f.user_id1 === userId ? f.user2 : f.user1
+          return {
+            id: friend.id,
+            name: `${friend.fname} ${friend.lname}`.trim() || friend.email,
+            email: friend.email,
+          }
+        })
+
+        return JSON.stringify(friends, null, 2)
+      },
+      {
+        name: "list_friends",
+        description: "List all confirmed friends of the current user.",
+        schema: z.object({}),
+      },
+    )
+
+    const getFriendSchedulesTool = tool(
+      async ({ friendId }: { friendId: string }) => {
+        await ensureFriendship(friendId)
+        
+        const schedules = await prisma.schedule.findMany({
+          where: { userId: friendId },
+          select: { id: true, name: true, createdAt: true },
+        })
+
+        return JSON.stringify(schedules, null, 2)
+      },
+      {
+        name: "get_friend_schedules",
+        description: "List schedules belonging to a friend. Requires friendId from list_friends.",
+        schema: z.object({
+          friendId: z.string().min(1, "friendId is required"),
+        }),
+      },
+    )
+
+    const getFriendEventsTool = tool(
+      async ({ friendId, scheduleId, from, to }: { friendId: string, scheduleId: string; from?: string; to?: string }) => {
+        await ensureFriendship(friendId)
+        
+        // Verify schedule belongs to friend
+        const schedule = await prisma.schedule.findFirst({
+          where: { id: scheduleId, userId: friendId },
+        })
+        
+        if (!schedule) {
+          throw new Error("Schedule not found or does not belong to this friend.")
+        }
+
+        const fromDate = from ? parseIsoDate(from, "from") : undefined
+        const toDate = to ? parseIsoDate(to, "to") : undefined
+
+        const allEvents = await prisma.event.findMany({
+          where: { scheduleId },
+        })
+
+        let events = allEvents
+        if (fromDate || toDate) {
+          events = allEvents.filter((event) => {
+            return event.start.some((startTime, idx) => {
+              const endTime = event.end[idx] ?? startTime
+              const startsBeforeTo = !toDate || startTime <= toDate
+              const endsAfterFrom = !fromDate || endTime >= fromDate
+              return startsBeforeTo && endsAfterFrom
+            })
+          })
+        }
+
+        return JSON.stringify(events.map(serializeEvent), null, 2)
+      },
+      {
+        name: "get_friend_events",
+        description: "Fetch events from a friend's schedule. Useful for finding free time slots.",
+        schema: z.object({
+          friendId: z.string().min(1),
+          scheduleId: z.string().min(1),
+          from: isoDateSchema.optional(),
+          to: isoDateSchema.optional(),
+        }),
+      },
+    )
+
     const repeatFrequencySchema = z.enum(["NEVER", "DAILY", "WEEKLY", "MONTHLY"]).describe(
       "How often the event repeats. NEVER = one-time event, DAILY/WEEKLY/MONTHLY = recurring event"
     )
@@ -227,6 +343,130 @@ export async function POST(req: Request) {
       start: isoDateSchema.describe("When this time slot starts"),
       end: isoDateSchema.describe("When this time slot ends"),
     })
+
+    const createSharedEventTool = tool(
+        async ({ 
+          friendId,
+          friendScheduleId,
+          userScheduleId,
+          name, 
+          description, 
+          timeSlots, 
+          repeated, 
+          repeatUntil 
+        }: { 
+          friendId: string
+          friendScheduleId: string
+          userScheduleId: string
+          name: string
+          description?: string
+          timeSlots: Array<{ start: string; end: string }>
+          repeated?: string
+          repeatUntil?: string
+        }) => {
+          await ensureFriendship(friendId)
+          
+          const friendSchedule = await prisma.schedule.findFirst({
+            where: { id: friendScheduleId, userId: friendId },
+          })
+          
+          if (!friendSchedule) {
+            throw new Error("Friend's schedule not found or does not belong to them.")
+          }
+
+          const userSchedule = await ensureScheduleOwnership(userScheduleId, userId)
+
+          // Get friend's name for the event description
+          const friendUser = await prisma.user.findUnique({
+            where: { id: friendId },
+            select: { fname: true, lname: true, email: true },
+          })
+          const friendName = friendUser 
+            ? ([friendUser.fname, friendUser.lname].filter(Boolean).join(" ") || friendUser.email)
+            : "Friend"
+
+          // Get current user's name for the friend's event description
+          // session.user is available in the closure
+          const currentUserName = [session.user.fname, session.user.lname].filter(Boolean).join(" ") || session.user.email || "Friend"
+
+          const userEventDescription = description 
+            ? `${description}\n\nWith ${friendName}` 
+            : `With ${friendName}`
+            
+          const friendEventDescription = description 
+            ? `${description}\n\nWith ${currentUserName}` 
+            : `With ${currentUserName}`
+
+          const repeatUntilDate = repeatUntil ? parseIsoDate(repeatUntil, "repeatUntil") : null
+          const startDates: Date[] = []
+          const endDates: Date[] = []
+  
+          for (let i = 0; i < timeSlots.length; i++) {
+            const slot = timeSlots[i]
+            if (!slot) continue
+            const startDate = parseIsoDate(slot.start, `timeSlots[${i}].start`)
+            const endDate = parseIsoDate(slot.end, `timeSlots[${i}].end`)
+  
+            if (endDate <= startDate) {
+              throw new Error(`Time slot ${i + 1}: end time must be after start time.`)
+            }
+  
+            startDates.push(startDate)
+            endDates.push(endDate)
+          }
+
+          // Create event for friend
+          const friendEvent = await prisma.event.create({
+            data: {
+              scheduleId: friendSchedule.id,
+              name,
+              description: friendEventDescription,
+              start: startDates,
+              end: endDates,
+              repeated: (repeated as "NEVER" | "DAILY" | "WEEKLY" | "MONTHLY") ?? "NEVER",
+              repeatUntil: repeatUntilDate,
+            },
+          })
+
+          // Create event for user
+          const userEvent = await prisma.event.create({
+            data: {
+              scheduleId: userSchedule.id,
+              name,
+              description: userEventDescription,
+              start: startDates,
+              end: endDates,
+              repeated: (repeated as "NEVER" | "DAILY" | "WEEKLY" | "MONTHLY") ?? "NEVER",
+              repeatUntil: repeatUntilDate,
+            },
+          })
+  
+          return JSON.stringify(
+            {
+              message: "Shared event created on both schedules",
+              friendId,
+              friendEvent: serializeEvent(friendEvent),
+              userEvent: serializeEvent(userEvent),
+            },
+            null,
+            2,
+          )
+        },
+        {
+          name: "create_shared_event",
+          description: "Create a shared event on both your schedule and a friend's schedule. This ensures you both have the event.",
+          schema: z.object({
+            friendId: z.string().min(1),
+            friendScheduleId: z.string().min(1, "Friend's scheduleId is required"),
+            userScheduleId: z.string().min(1, "Your scheduleId is required"),
+            name: z.string().min(1, "Event name is required"),
+            description: z.string().optional(),
+            timeSlots: z.array(timeSlotSchema).min(1),
+            repeated: repeatFrequencySchema.optional().default("NEVER"),
+            repeatUntil: isoDateSchema.optional(),
+          }),
+        },
+      )
 
     const createEventTool = tool(
       async ({ 
@@ -447,7 +687,17 @@ Example 2: Class that meets twice per week (Tue/Thu 10am-11:30am), repeating wee
       },
     )
 
-    const tools = [listSchedulesTool, listEventsTool, createEventTool, updateEventTool, deleteEventTool]
+    const tools = [
+        listSchedulesTool, 
+        listEventsTool, 
+        createEventTool, 
+        updateEventTool, 
+        deleteEventTool,
+        listFriendsTool,
+        getFriendSchedulesTool,
+        getFriendEventsTool,
+        createSharedEventTool
+    ]
 
     const llm = new ChatOpenAI({
       model: "gpt-5-mini",
@@ -693,5 +943,3 @@ function isTextContentBlock(block: unknown): block is TextContentBlock {
     typeof (block as { text?: unknown }).text === "string"
   )
 }
-
-
