@@ -61,7 +61,10 @@ export function CreateEventOverlayTrigger({
   const [endTime, setEndTime] = useState(endSplit.time)
 
   const [repeat, setRepeat] = useState<RepeatOption>("NEVER")
-  const [repeatInterval, setRepeatInterval] = useState<number>(1)
+  const [repeatUntil, setRepeatUntil] = useState("")
+  const [color, setColor] = useState<string>("primary")
+  const [location, setLocation] = useState("")
+  const [reminder, setReminder] = useState(false)
 
   const [portalEl, setPortalEl] = useState<HTMLElement | null>(null)
   useEffect(() => {
@@ -82,7 +85,10 @@ export function CreateEventOverlayTrigger({
     setStartTime(startSplit.time)
     setEndTime(endSplit.time)
     setRepeat("NEVER")
-    setRepeatInterval(1)
+    setRepeatUntil("")
+    setColor("primary")
+    setLocation("")
+    setReminder(false)
     setOpen(true)
   }
 
@@ -97,7 +103,14 @@ export function CreateEventOverlayTrigger({
       description,
       start: startISO,
       end: endISO,
-      recurrence: repeat === "NEVER" ? null : { freq: repeat, interval: repeatInterval },
+      recurrence: repeat === "NEVER" ? null : { 
+        freq: repeat, 
+        interval: 1,
+        until: repeatUntil ? new Date(repeatUntil).toISOString() : null
+      },
+      color,
+      location,
+      reminder,
     }
     if (onSubmit) onSubmit(eventObj)
     setOpen(false)
@@ -105,21 +118,21 @@ export function CreateEventOverlayTrigger({
 
   const dialog = (
     <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
-      <div className="relative w-full max-w-4xl bg-content1/90 rounded-2xl border border-primary/12 shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-4xl bg-content1/95 rounded-2xl border border-primary/15 shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-primary/10 bg-content1/95">
+        <div className="flex items-center justify-between px-6 py-3 border-b border-primary/15 bg-content1/95">
           <div>
             <p className="text-xs uppercase tracking-[0.28em] text-primary/70">New event</p>
             <h3 className="text-lg font-semibold text-foreground">Create event</h3>
           </div>
 
           <div className="flex items-center gap-3">
-            <button type="button" onClick={(e) => { /* also submit via form */ const form = document.getElementById('create-event-form') as HTMLFormElement | null; form?.requestSubmit() }} className="inline-flex h-9 items-center gap-2 rounded-md border bg-primary/90 px-4 text-sm font-semibold text-white">Save</button>
+            <div />
             <button
               type="button"
               aria-label="Close overlay"
               onClick={closeModal}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border bg-content1/70 text-sm text-foreground shadow-sm"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-default/30 bg-content1/95 text-sm text-foreground shadow-sm"
             >
               ×
             </button>
@@ -141,12 +154,12 @@ export function CreateEventOverlayTrigger({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Add a title"
-                  className="w-full h-11 rounded-lg border border-default/20 bg-content1/80 px-4 py-2 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40"
+                  className="w-full h-11 rounded-lg border border-default/30 bg-content1/95 px-4 py-2 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40"
                 />
               </div>
 
               {/* Schedule card */}
-              <div className="rounded-xl border border-primary/10 bg-background/60 p-4">
+              <div className="rounded-xl border border-primary/15 bg-content1/95 p-4">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-xs uppercase tracking-[0.22em] text-primary/70">Schedule</span>
                 </div>
@@ -154,26 +167,25 @@ export function CreateEventOverlayTrigger({
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs text-default-500 mb-2">Date</label>
-                    <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full h-10 rounded-lg border border-default/20 bg-background/70 px-3 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40" />
+                    <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full h-10 rounded-lg border border-default/30 bg-content1/95 px-3 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40" />
                   </div>
 
                   <div>
-                    <label className="block text-xs text-default-500 mb-2">Time</label>
                     <div className="flex gap-3">
                       <div className="flex-1">
                         <div className="text-xs text-default-500 mb-1">Start time</div>
-                        <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full h-10 rounded-lg border border-default/20 bg-background/70 px-3 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40" />
+                        <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full h-10 rounded-lg border border-default/30 bg-content1/95 px-3 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40" />
                       </div>
                       <div className="flex-1">
                         <div className="text-xs text-default-500 mb-1">End time</div>
-                        <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full h-10 rounded-lg border border-default/20 bg-background/70 px-3 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40" />
+                        <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full h-10 rounded-lg border border-default/30 bg-content1/95 px-3 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40" />
                       </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-2 flex items-center gap-3">
-                  <select value={repeat} onChange={(e) => setRepeat(e.target.value as RepeatOption)} className="rounded-lg border border-default/20 px-3 py-2 text-sm w-44 bg-content1/80 focus:outline-none focus:ring-0 focus:border-primary/40">
+                  <select value={repeat} onChange={(e) => setRepeat(e.target.value as RepeatOption)} className="rounded-lg border border-default/30 bg-content1/95 px-3 py-2 text-sm w-44 focus:outline-none focus:ring-0 focus:border-primary/40">
                     <option value="NEVER">Does not repeat</option>
                     <option value="DAILY">Daily</option>
                     <option value="WEEKLY">Weekly</option>
@@ -181,21 +193,32 @@ export function CreateEventOverlayTrigger({
                     <option value="YEARLY">Yearly</option>
                   </select>
 
-                  <input type="number" min={1} value={repeatInterval} onChange={(e) => setRepeatInterval(Math.max(1, Number(e.target.value) || 1))} className="w-20 h-10 rounded-lg border border-default/20 bg-background/70 px-3 text-sm focus:outline-none focus:ring-0 focus:border-primary/40" />
-
-                  <div className="ml-auto text-sm text-default-500">{repeat === "NEVER" ? 'No recurrence' : `Every ${repeatInterval} ${repeat.toLowerCase()}`}</div>
+                  {repeat !== "NEVER" && (
+                    <div className="flex-1 flex items-center gap-2">
+                      <span className="text-xs text-default-500">Until:</span>
+                      <input 
+                        type="date" 
+                        value={repeatUntil} 
+                        onChange={(e) => setRepeatUntil(e.target.value)} 
+                        min={date}
+                        className="flex-1 h-10 rounded-lg border border-default/30 bg-content1/95 px-3 text-sm focus:outline-none focus:ring-0 focus:border-primary/40" 
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Description */}
               <div>
                 <label htmlFor="event-description" className="block text-xs uppercase tracking-[0.22em] text-default-500 mb-2">Details</label>
-                <textarea id="event-description" rows={5} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Add notes or agenda" className="w-full rounded-lg border border-default/20 bg-content1/80 px-3 py-3 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40" />
+                <textarea id="event-description" rows={5} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Add notes or agenda" className="w-full rounded-lg border border-default/30 bg-content1/95 px-3 py-3 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40" />
               </div>
 
-              {/* Bottom actions (keep only Cancel since Save exists in header) */}
-              <div className="flex items-center justify-end gap-3">
-                {/* Intentionally only one Cancel/Close control (header ×) to avoid duplicate actions */}
+              {/* Bottom actions: Save placed bottom-left */}
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <button type="submit" className="inline-flex items-center rounded-md border bg-primary/90 px-4 py-2 text-sm font-semibold text-white">Save</button>
+                </div>
                 <div />
               </div>
             </form>
@@ -203,16 +226,90 @@ export function CreateEventOverlayTrigger({
 
           {/* Right preview / summary */}
           <aside className="md:col-span-1">
-            <div className="rounded-xl border border-primary/8 bg-background/60 p-4 h-full flex flex-col gap-4">
+            <div className="rounded-xl border border-primary/12 bg-content1/95 p-4 h-full flex flex-col gap-4">
+              {/* Preview Section */}
               <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-primary/70 mb-2">When</p>
+                <p className="text-xs uppercase tracking-[0.22em] text-primary/70 mb-2">Preview</p>
                 <div className="text-sm text-foreground">
                   <div className="font-semibold">{name || 'Untitled event'}</div>
-                  <div className="text-default-500 mt-2">{date} {startTime} — {date} {endTime}</div>
+                  <div className="text-default-500 mt-2">{date} {startTime} — {endTime}</div>
+                  {location && (
+                    <div className="text-default-500 mt-1">📍 {location}</div>
+                  )}
                 </div>
               </div>
 
-              <div className="mt-auto text-xs text-default-500">Recurrence: {repeat === 'NEVER' ? 'None' : `${repeatInterval}× ${repeat}`}</div>
+              <div className="border-t border-default/20"></div>
+
+              {/* Color Selection */}
+              <div>
+                <label className="block text-xs uppercase tracking-[0.22em] text-default-500 mb-2">Event Color</label>
+                <div className="grid grid-cols-5 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setColor("primary")}
+                    className={`h-10 rounded-lg border-2 transition-all ${color === "primary" ? "border-primary bg-primary/20" : "border-primary/30 bg-primary/10 hover:border-primary/50"}`}
+                    title="Primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setColor("secondary")}
+                    className={`h-10 rounded-lg border-2 transition-all ${color === "secondary" ? "border-secondary bg-secondary/20" : "border-secondary/30 bg-secondary/10 hover:border-secondary/50"}`}
+                    title="Secondary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setColor("success")}
+                    className={`h-10 rounded-lg border-2 transition-all ${color === "success" ? "border-success bg-success/20" : "border-success/30 bg-success/10 hover:border-success/50"}`}
+                    title="Success"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setColor("warning")}
+                    className={`h-10 rounded-lg border-2 transition-all ${color === "warning" ? "border-warning bg-warning/20" : "border-warning/30 bg-warning/10 hover:border-warning/50"}`}
+                    title="Warning"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setColor("danger")}
+                    className={`h-10 rounded-lg border-2 transition-all ${color === "danger" ? "border-danger bg-danger/20" : "border-danger/30 bg-danger/10 hover:border-danger/50"}`}
+                    title="Danger"
+                  />
+                </div>
+              </div>
+
+              {/* Location */}
+              <div>
+                <label htmlFor="event-location" className="block text-xs uppercase tracking-[0.22em] text-default-500 mb-2">Location</label>
+                <input
+                  id="event-location"
+                  type="text"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  placeholder="Add location"
+                  className="w-full h-10 rounded-lg border border-default/30 bg-content1/95 px-3 text-sm placeholder:text-default-400 focus:outline-none focus:ring-0 focus:border-primary/40"
+                />
+              </div>
+
+              {/* Reminder Toggle */}
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={reminder}
+                    onChange={(e) => setReminder(e.target.checked)}
+                    className="rounded border-default/30 text-primary focus:ring-2 focus:ring-primary/40"
+                  />
+                  <span className="text-xs uppercase tracking-[0.22em] text-default-500">Set Reminder</span>
+                </label>
+                {reminder && (
+                  <p className="text-xs text-default-500 mt-2">You'll be notified 15 minutes before</p>
+                )}
+              </div>
+
+              <div className="mt-auto text-xs text-default-500">
+                {repeat === 'NEVER' ? 'No recurrence' : `Repeats ${repeat.toLowerCase()}${repeatUntil ? ` until ${new Date(repeatUntil).toLocaleDateString()}` : ''}`}
+              </div>
             </div>
           </aside>
         </div>
@@ -227,4 +324,3 @@ export function CreateEventOverlayTrigger({
     </>
   )
 }
-
