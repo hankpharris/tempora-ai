@@ -38,6 +38,11 @@ export async function POST(req: Request) {
         password: hashedPassword,
         fname,
         lname,
+        schedules: {
+          create: {
+            name: "My Schedule",
+          },
+        },
       },
     })
 
