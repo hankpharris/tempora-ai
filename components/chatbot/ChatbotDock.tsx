@@ -1,6 +1,7 @@
 "use client"
 
 import { AnimatePresence, motion } from "framer-motion"
+import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
@@ -82,6 +83,7 @@ function MessageContent({ content }: { content: string | ContentPart[] }) {
         }
         if (part.type === "image_url") {
           return (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               key={index}
               src={part.image_url.url}
@@ -388,11 +390,19 @@ export function ChatbotDock() {
                   </div>
                 ) : null}
                 {!isAuthenticated && !sessionLoading ? (
-                  <p className="text-xs text-default-500">
-                    Sign in to let the assistant inspect and update your schedules securely.
-                  </p>
-                ) : null}
-                <form className="space-y-3" onSubmit={handleSubmit}>
+                  <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-default/20 bg-default-50 p-6 text-center">
+                    <p className="text-sm text-default-600">
+                      Please log in to chat with Tempora and manage your schedule.
+                    </p>
+                    <Link
+                      href="/login"
+                      className="rounded-full bg-primary px-6 py-2 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition hover:bg-primary/90"
+                    >
+                      Log In
+                    </Link>
+                  </div>
+                ) : (
+                  <form className="space-y-3" onSubmit={handleSubmit}>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -407,6 +417,7 @@ export function ChatbotDock() {
                     <div className="flex flex-wrap gap-2 rounded-xl border border-default/20 bg-default-50/50 p-2">
                       {attachedImages.map((img) => (
                         <div key={img.id} className="group relative">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={img.dataUrl}
                             alt={img.name}
@@ -484,6 +495,7 @@ export function ChatbotDock() {
                     </button>
                   </div>
                 </form>
+                )}
               </div>
             </motion.aside>
           </>
