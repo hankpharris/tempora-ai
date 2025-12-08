@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 import { ExpandableEventCard } from "@/components/ExpandableEventCard"
+import { ManageFriendshipsButton } from "@/components/ManageFriendshipsButton"
 import { CreateEventOverlayTriggerClient } from "@/components/CreateEventOverlayTriggerClient"
 import { MovingBlob } from "@/components/MovingBlob"
 import { auth } from "@/lib/auth"
@@ -229,9 +230,12 @@ export default async function CalendarPage() {
             <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[32px] border border-primary/15 bg-content1/70 p-8 shadow-2xl backdrop-blur-xl dark:bg-content1/60">
               <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-primary/70">
-                    Hello, {greetingName}
-                  </p>
+                  <div className="flex items-center gap-4">
+                    <p className="text-xs uppercase tracking-[0.35em] text-primary/70">
+                      Hello, {greetingName}
+                    </p>
+                    <ManageFriendshipsButton className="h-6 min-h-6 text-[10px] px-3 rounded-lg" />
+                  </div>
                   <h1 className="mt-2 text-4xl font-semibold text-foreground">Tempora calendar</h1>
                   <p className="mt-2 max-w-2xl text-sm text-default-600">
                     Glide through your schedule with stacked perspectives. Scroll to morph from a
