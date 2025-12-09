@@ -1,11 +1,7 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-
-type RouteContext = {
-  params: { id: string }
-}
 
 const isoDateSchema = z.string().datetime().describe("ISO-8601 timestamp, e.g. 2024-11-18T13:30:00Z")
 
@@ -31,13 +27,13 @@ function parseIsoDate(value: string, label: string) {
   return parsed
 }
 
-export async function DELETE(_req: Request, { params }: RouteContext) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: eventId } = await params
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const eventId = params.id
   if (!eventId) {
     return NextResponse.json({ error: "Event id is required" }, { status: 400 })
   }
@@ -63,13 +59,13 @@ export async function DELETE(_req: Request, { params }: RouteContext) {
   }
 }
 
-export async function PATCH(req: Request, { params }: RouteContext) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: eventId } = await params
   const session = await auth()
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const eventId = params.id
   if (!eventId) {
     return NextResponse.json({ error: "Event id is required" }, { status: 400 })
   }
@@ -110,6 +106,9 @@ export async function PATCH(req: Request, { params }: RouteContext) {
           return NextResponse.json({ error: "Invalid slot index" }, { status: 400 })
         }
         const slot = data.timeSlots[0]
+        if (!slot) {
+          return NextResponse.json({ error: "Missing time slot data" }, { status: 400 })
+        }
         const startDate = parseIsoDate(slot.start, "timeSlots[0].start")
         const endDate = parseIsoDate(slot.end, "timeSlots[0].end")
         if (endDate <= startDate) {
@@ -123,6 +122,9 @@ export async function PATCH(req: Request, { params }: RouteContext) {
         const ends: Date[] = []
         for (let i = 0; i < data.timeSlots.length; i++) {
           const slot = data.timeSlots[i]
+          if (!slot) {
+            return NextResponse.json({ error: `Time slot ${i + 1} is missing` }, { status: 400 })
+          }
           const startDate = parseIsoDate(slot.start, `timeSlots[${i}].start`)
           const endDate = parseIsoDate(slot.end, `timeSlots[${i}].end`)
           if (endDate <= startDate) {

@@ -173,14 +173,21 @@ export function ExpandableEventCard({
 
     try {
       setIsSaving(true)
-      const payload: Record<string, any> = {
+      const payload: {
+        name: string
+        description: string | null
+        timeSlots: { start: string; end: string }[]
+        slotIndex: number
+        repeated: typeof editRepeat
+        repeatUntil: string | null
+      } = {
         name: editName.trim(),
         description: editDescription.trim() || null,
         timeSlots: [{ start: startISO, end: endISO }],
         slotIndex: slotIndex ?? 0,
+        repeated: editRepeat,
+        repeatUntil: editRepeat === "NEVER" ? null : repeatUntilISO,
       }
-      payload.repeated = editRepeat
-      payload.repeatUntil = editRepeat === "NEVER" ? null : repeatUntilISO
 
       const res = await fetch(`/api/events/${eventId}`, {
         method: "PATCH",
@@ -212,8 +219,9 @@ export function ExpandableEventCard({
 
       setIsEditOpen(false)
       router.refresh()
-    } catch (err: any) {
-      setEditError(err?.message || "Failed to update event")
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to update event"
+      setEditError(message)
     } finally {
       setIsSaving(false)
     }
@@ -251,8 +259,9 @@ export function ExpandableEventCard({
       }
       setIsEditOpen(false)
       router.refresh()
-    } catch (err: any) {
-      setDeleteError(err?.message || "Failed to delete event")
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to delete event"
+      setDeleteError(message)
     } finally {
       setIsDeleting(false)
     }

@@ -1,8 +1,7 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
-import { ExpandableEventCard } from "@/components/ExpandableEventCard"
-import { ManageFriendshipsButton } from "@/components/ManageFriendshipsButton"
 import { CreateEventOverlayTriggerClient } from "@/components/CreateEventOverlayTriggerClient"
+import { ExpandableEventCard } from "@/components/ExpandableEventCard"
 import { MovingBlob } from "@/components/MovingBlob"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -22,7 +21,6 @@ const MIN_TIMELINE_BLOCK_MINUTES = 45
 const HOUR_HEIGHT = 48
 const WEEK_HEADER_HEIGHT = 40
 const TOTAL_DAY_HEIGHT = WEEK_HEADER_HEIGHT + HOUR_HEIGHT * 24
-const DAY_TIMELINE_HEIGHT = 520
 const SECTION_SNAP_CLASS =
   "snap-start min-h-screen px-4 py-10 md:px-8 lg:px-12 flex items-stretch"
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
@@ -180,26 +178,10 @@ const focusedDay = resolveFocusedDay(weekDays)
 const dayEvents = focusedDay?.events ?? []
 const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
 
-  const totalSchedules = schedules.length
-  const totalEvents = normalizedEvents.length
-  const eventsThisMonth = normalizedEvents.filter(
-    (event) =>
-      event.start.getFullYear() === today.getFullYear() &&
-      event.start.getMonth() === today.getMonth(),
-  ).length
-  const activeDaysThisMonth = monthMatrix
-    .flat()
-    .filter((day) => day.isCurrentMonth && day.events.length > 0).length
-
   const upcomingEvents = normalizedEvents.filter((event) => event.end.getTime() >= today.getTime())
   const highlightedEvent = upcomingEvents[0] ?? normalizedEvents[0] ?? null
   const prioritizedUpcoming =
     upcomingEvents.length > 0 ? upcomingEvents.slice(0, 4) : normalizedEvents.slice(0, 4)
-
-  const greetingName =
-    session.user.name ??
-    session.user.email?.split("@")[0] ??
-    (session.user.email ?? "there")
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-background via-default-100/15 to-default-200/20 text-foreground">
@@ -637,26 +619,6 @@ function getRelativeLabel(target: Date, today: Date) {
   return diff > 0 ? `In ${distance}` : `${distance} ago`
 }
 
-function getTimelinePlacement(event: NormalizedEvent, referenceDay: Date) {
-  const dayStart = startOfDay(referenceDay)
-  const minutesSinceStart = (date: Date) => (date.getTime() - dayStart.getTime()) / 60_000
-  const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
-
-  const startMinutes = clamp(minutesSinceStart(event.start), 0, MINUTES_IN_DAY)
-  const rawEndMinutes = clamp(minutesSinceStart(event.end), 0, MINUTES_IN_DAY)
-  const ensuredEnd = Math.min(
-    Math.max(rawEndMinutes, startMinutes + MIN_TIMELINE_BLOCK_MINUTES),
-    MINUTES_IN_DAY,
-  )
-
-  const widthMinutes = ensuredEnd - startMinutes
-
-  return {
-    left: (startMinutes / MINUTES_IN_DAY) * 100,
-    width: (widthMinutes / MINUTES_IN_DAY) * 100,
-  }
-}
-
 function buildTimelineLanes(events: NormalizedEvent[], referenceDay: Date) {
   const dayStart = startOfDay(referenceDay)
   const toMinutes = (date: Date) => (date.getTime() - dayStart.getTime()) / 60_000
@@ -685,7 +647,8 @@ function buildTimelineLanes(events: NormalizedEvent[], referenceDay: Date) {
   return normalized.map((item) => {
     let lane = 0
     for (; lane < lanes.length; lane++) {
-      if (item.start >= lanes[lane] - 0.5) break
+      const laneEnd = lanes[lane] ?? -Infinity
+      if (item.start >= laneEnd - 0.5) break
     }
     if (lane === lanes.length) {
       lanes.push(item.end)
@@ -801,25 +764,4 @@ function getNextOccurrence(current: Date, frequency: string): Date {
   }
   
   return next
-}
-
-type StatCardProps = {
-  label: string
-  value: number
-  helper?: string
-  emphasis?: boolean
-}
-
-function StatCard({ label, value, helper, emphasis }: StatCardProps) {
-  return (
-    <div
-      className={`rounded-2xl border px-4 py-3 text-left ${
-        emphasis ? "border-primary/40 bg-primary/10" : "border-default/25 bg-background/60"
-      }`}
-    >
-      <p className="text-[11px] uppercase tracking-[0.3em] text-default-500">{label}</p>
-      <p className="text-2xl font-semibold text-foreground">{value}</p>
-      {helper ? <p className="text-xs text-default-500">{helper}</p> : null}
-    </div>
-  )
 }

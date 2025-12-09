@@ -115,11 +115,12 @@ export async function POST(req: Request) {
     })
 
     return NextResponse.json({ message: "Event created", event: serializeEvent(event) }, { status: 201 })
-  } catch (error) {
+  } catch (error: unknown) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: error.issues.map((i) => i.message).join(", ") }, { status: 400 })
     }
     console.error("/api/events error", error)
-    return NextResponse.json({ error: (error as any)?.message || "Something went wrong" }, { status: 500 })
+    const message = error instanceof Error ? error.message : "Something went wrong"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

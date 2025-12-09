@@ -73,7 +73,6 @@ export function CreateEventOverlayTrigger({
 
   const [repeat, setRepeat] = useState<RepeatOption>("NEVER")
   const [repeatUntil, setRepeatUntil] = useState("")
-  const [color, setColor] = useState<string>("primary")
   const [location, setLocation] = useState("")
   const [reminder, setReminder] = useState(false)
 
@@ -118,7 +117,6 @@ export function CreateEventOverlayTrigger({
     setEndTime(endSplit.time)
     setRepeat("NEVER")
     setRepeatUntil("")
-    setColor("primary")
     setLocation("")
     setReminder(false)
     setOpen(true)
@@ -178,8 +176,9 @@ export function CreateEventOverlayTrigger({
       setIsSubmitting(true)
       await onCreateEvent(payload)
       setOpen(false)
-    } catch (err: any) {
-      setFormError(err?.message || "Failed to create event")
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to create event"
+      setFormError(message)
     } finally {
       setIsSubmitting(false)
     }
