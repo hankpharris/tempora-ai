@@ -190,12 +190,23 @@ export function ExpandableEventCard({
 
       if (!res.ok) {
         let message = "Failed to update event"
+
         try {
-          const data = await res.json()
-          message = data?.error || message
+          const data = (await res.json()) as unknown
+          if (data && typeof data === "object" && "error" in (data as Record<string, unknown>)) {
+            message = String((data as { error?: string }).error || message)
+          } else {
+            message = JSON.stringify(data) || message
+          }
         } catch {
-          // ignore parse errors
+          try {
+            const text = await res.text()
+            if (text) message = text
+          } catch {
+            // ignore parse errors
+          }
         }
+
         throw new Error(message)
       }
 
@@ -219,12 +230,23 @@ export function ExpandableEventCard({
       const res = await fetch(`/api/events/${eventId}`, { method: "DELETE" })
       if (!res.ok) {
         let message = "Failed to delete event"
+
         try {
-          const data = await res.json()
-          message = data?.error || message
+          const data = (await res.json()) as unknown
+          if (data && typeof data === "object" && "error" in (data as Record<string, unknown>)) {
+            message = String((data as { error?: string }).error || message)
+          } else {
+            message = JSON.stringify(data) || message
+          }
         } catch {
-          // ignore JSON parse errors
+          try {
+            const text = await res.text()
+            if (text) message = text
+          } catch {
+            // ignore parse errors
+          }
         }
+
         throw new Error(message)
       }
       setIsEditOpen(false)

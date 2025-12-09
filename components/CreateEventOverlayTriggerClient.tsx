@@ -1,6 +1,7 @@
 "use client"
 
 import React from "react"
+import { useRouter } from "next/navigation"
 import { CreateEventOverlayTrigger, CreateEventPayload } from "./CreateEventOverlayTrigger"
 
 type Props = {
@@ -18,6 +19,8 @@ export function CreateEventOverlayTriggerClient({
   initialStart,
   initialEnd,
 }: Props) {
+  const router = useRouter()
+
   const handleCreateEvent = async (payload: CreateEventPayload) => {
     // Attach scheduleId from wrapper if provided
     const body = { ...payload, ...(scheduleId ? { scheduleId } : {}) }
@@ -29,17 +32,30 @@ export function CreateEventOverlayTriggerClient({
     })
 
     if (!res.ok) {
-      // Try JSON error first, fallback to text
+      let message = "Failed to create event"
+
       try {
-        const json = await res.json()
-        throw new Error(json?.error || JSON.stringify(json) || "Failed to create event")
-      } catch (e) {
-        const text = await res.text()
-        throw new Error(text || "Failed to create event")
+        const json = (await res.json()) as unknown
+        if (json && typeof json === "object" && "error" in (json as Record<string, unknown>)) {
+          message = String((json as { error?: string }).error || message)
+        } else {
+          message = JSON.stringify(json) || message
+        }
+      } catch {
+        try {
+          const text = await res.text()
+          if (text) message = text
+        } catch {
+          // ignore
+        }
       }
+
+      throw new Error(message)
     }
 
-    return res.json()
+    const data = await res.json()
+    router.refresh()
+    return data
   }
 
   return (

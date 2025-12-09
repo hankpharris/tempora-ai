@@ -22,6 +22,7 @@ const MIN_TIMELINE_BLOCK_MINUTES = 45
 const HOUR_HEIGHT = 48
 const WEEK_HEADER_HEIGHT = 40
 const TOTAL_DAY_HEIGHT = WEEK_HEADER_HEIGHT + HOUR_HEIGHT * 24
+const DAY_TIMELINE_HEIGHT = 520
 const SECTION_SNAP_CLASS =
   "snap-start min-h-screen px-4 py-10 md:px-8 lg:px-12 flex items-stretch"
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
@@ -201,24 +202,37 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
     (session.user.email ?? "there")
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-emerald-50 via-white to-emerald-100 text-foreground">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-background via-default-100/15 to-default-200/20 text-foreground">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <MovingBlob size={420} speed={50} colorClass="bg-primary/10" blurClass="blur-[120px]" className="animate-blob-slow" />
-        <MovingBlob size={320} speed={64} delay={1500} colorClass="bg-emerald-200/40" blurClass="blur-[110px]" className="animate-blob-medium" />
+        <MovingBlob
+          size={420}
+          speed={50}
+          colorClass="bg-primary/16"
+          blurClass="blur-[120px]"
+          className="animate-blob-slow mix-blend-screen"
+        />
+        <MovingBlob
+          size={340}
+          speed={64}
+          delay={1500}
+          colorClass="bg-secondary/18"
+          blurClass="blur-[110px]"
+          className="animate-blob-medium mix-blend-screen"
+        />
       </div>
 
       <main className="relative z-10 h-screen snap-y snap-mandatory overflow-y-auto">
         <section className={SECTION_SNAP_CLASS}>
           <div className="mx-auto flex h-full w-full max-w-[1600px] flex-col min-h-0 gap-6">
             <div className="grid flex-1 min-h-0 grid-cols-1 gap-6 px-2 lg:grid-cols-[3fr,1.1fr] lg:px-0">
-              <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-2xl px-3 lg:px-4">
-                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-emerald-100 px-6 py-4">
+              <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-default/20 bg-content1/80 shadow-2xl px-3 lg:px-4 dark:border-default/25 dark:bg-content1/60">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-default/15 px-6 py-4">
                   <div>
                     <p className="text-[11px] uppercase tracking-[0.35em] text-default-500">Month</p>
                     <h2 className="text-2xl font-semibold text-foreground">{monthLabel}</h2>
                   </div>
                   <div className="flex items-center gap-3 text-sm text-default-500">
-                    <span className="hidden rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 sm:inline-flex">
+                    <span className="hidden rounded-full border border-default/20 bg-default-100/60 px-3 py-1 dark:border-default/30 dark:bg-default-100/10 sm:inline-flex">
                       {highlightedEvent ? `Next: ${highlightedEvent.name}` : "No upcoming events"}
                     </span>
                     <CreateEventOverlayTriggerClient
@@ -230,7 +244,7 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
 
                 <div className="flex-1 overflow-hidden">
                   <div className="flex h-full flex-col overflow-auto">
-                    <div className="grid grid-cols-7 border-b border-emerald-100 bg-white px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.35em] text-default-500">
+                    <div className="grid grid-cols-7 border-b border-default/15 bg-content1 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.35em] text-default-500">
                       {WEEKDAY_HEADER.map((label) => (
                         <span key={label} className="text-center">
                           {label}
@@ -243,8 +257,8 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                           key={day.key}
                           className={`rounded-xl border p-3 transition-colors ${
                             day.isCurrentMonth
-                              ? "border-emerald-200 bg-white"
-                              : "border-emerald-100 bg-emerald-50 opacity-80"
+                              ? "border-default/20 bg-content1"
+                              : "border-default/10 bg-default-100/60 opacity-90"
                           } ${day.isToday ? "ring-2 ring-primary/60" : ""}`}
                         >
                           <div className="flex items-center justify-between text-sm font-semibold">
@@ -306,14 +320,14 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                 <h2 className="text-2xl font-semibold text-foreground">{weekRangeLabel}</h2>
                 <p className="text-sm text-default-500">Hour-by-hour view across the next seven days.</p>
               </div>
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-default-700">
+              <div className="rounded-lg border border-default/25 bg-default-100/60 px-4 py-2 text-sm font-semibold text-default-700 dark:border-default/30 dark:bg-default-100/10 dark:text-default-200">
                 {weekEventCount} event{weekEventCount === 1 ? "" : "s"} this week
               </div>
             </div>
 
-            <div className="flex min-h-[960px] flex-1 overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-2xl p-3">
+            <div className="flex min-h-[960px] flex-1 overflow-hidden rounded-2xl border border-default/20 bg-content1/80 shadow-2xl p-3 dark:border-default/25 dark:bg-content1/60">
               <div
-                className="w-16 border-r border-emerald-100 pr-3 pt-[40px]"
+                className="w-16 border-r border-default/15 pr-3 pt-[40px] dark:border-default/25"
                 style={{ height: TOTAL_DAY_HEIGHT }}
               >
                 {HOURS.map((hour) => (
@@ -326,16 +340,16 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                 {weekDays.map((day) => (
                   <div
                     key={day.key}
-                    className="relative overflow-hidden rounded-xl border border-emerald-100 bg-emerald-50"
+                    className="relative overflow-hidden rounded-xl border border-default/15 bg-default-100/40 dark:border-default/20 dark:bg-default-100/5"
                     style={{ height: TOTAL_DAY_HEIGHT }}
                   >
-                    <div className="flex h-[40px] items-center justify-between px-3 text-xs font-semibold text-foreground border-b border-emerald-100 bg-white/60">
+                    <div className="flex h-[40px] items-center justify-between border-b border-default/15 bg-content1/70 px-3 text-xs font-semibold text-foreground">
                       <span className="text-[10px] uppercase tracking-[0.3em] text-default-500">{day.weekdayLabel}</span>
                       <span className="text-sm">{DAY_NUMBER_FORMATTER.format(day.date)}</span>
                     </div>
                     <div className="absolute inset-x-0 bottom-0 top-[40px]">
                       {HOURS.map((hour) => (
-                        <div key={hour} className="h-[48px] border-t border-emerald-100/70" />
+                        <div key={hour} className="h-[48px] border-t border-default/10 dark:border-default/20" />
                       ))}
                     </div>
                     <div className="absolute left-0 right-0 top-[40px] h-[calc(100%-40px)] px-2 pb-4">
@@ -382,33 +396,46 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                   <h2 className="text-2xl font-semibold text-foreground">Daily detail</h2>
                 )}
               </div>
-              <div className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-foreground">
+              <div className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-foreground dark:border-primary/40 dark:bg-primary/20">
                 {dayEvents.length} event{dayEvents.length === 1 ? "" : "s"} in focus
               </div>
             </div>
 
-            <div className="grid flex-1 grid-cols-1 gap-4 rounded-2xl border border-emerald-200 bg-white p-4 shadow-2xl lg:grid-cols-[1.3fr,0.7fr]">
-              <div className="flex flex-col rounded-xl border border-emerald-100 bg-white p-4 shadow-inner">
+            <div className="grid flex-1 grid-cols-1 gap-4 rounded-2xl border border-default/20 bg-content1/80 p-4 shadow-2xl dark:border-default/25 dark:bg-content1/60 lg:grid-cols-[1.3fr,0.7fr]">
+              <div className="flex flex-col rounded-xl border border-default/15 bg-content1 p-4 shadow-inner dark:border-default/25 dark:bg-content1/60">
                 <p className="text-[11px] uppercase tracking-[0.3em] text-default-500">Timeline</p>
-                <div className="relative mt-4 h-64 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
-                  <div className="absolute inset-x-6 top-1/2 -translate-y-1/2 border-t border-dashed border-emerald-300/50" />
+                <div className="relative mt-4 h-64 rounded-xl border border-default/15 bg-default-100/60 p-4 dark:border-default/25 dark:bg-default-100/10">
+                  <div className="absolute inset-x-6 top-1/2 -translate-y-1/2 border-t border-dashed border-default/20" />
                   {focusedDay &&
-                    dayEvents.map((event, index) => {
-                      const placement = getTimelinePlacement(event, focusedDay.date)
-                      const styles = COLOR_STYLES[event.colorToken]
-                      const laneOffset = 16 + (index % 2) * 52
+                    buildTimelineLanes(dayEvents, focusedDay.date).map((item) => {
+                      const styles = COLOR_STYLES[item.event.colorToken]
+                      const laneOffset = 16 + item.lane * 60
                       return (
                         <div
-                          key={event.id}
-                          className={`absolute rounded-xl border px-3 py-2 text-xs font-semibold shadow-sm ${styles.border} ${styles.surface} ${styles.text}`}
+                          key={`${item.event.id}-${item.lane}-${item.event.slotIndex}`}
+                          tabIndex={0}
+                          className={`group absolute rounded-xl border px-3 py-2 text-xs font-semibold shadow-sm ${styles.border} ${styles.surface} ${styles.text} focus-visible:outline-none`}
                           style={{
-                            left: `${placement.left}%`,
-                            width: `${placement.width}%`,
+                            left: `${item.left}%`,
+                            width: `${item.width}%`,
                             top: `${laneOffset}px`,
                           }}
                         >
-                          <p>{event.name}</p>
-                          <p className="text-[11px] font-normal text-default-600">{formatTimeRange(event)}</p>
+                          <div className="overflow-hidden">
+                            <p className="text-sm font-semibold leading-tight truncate">{item.event.name}</p>
+                            <p className="text-[11px] font-normal text-default-600 leading-snug truncate">
+                              {formatTimeRange(item.event)}
+                            </p>
+                          </div>
+                          <div className="pointer-events-none absolute inset-0 rounded-xl ring-primary/0 transition group-hover:ring-2 group-focus-visible:ring-2" />
+                          <div className="absolute left-1/2 top-full z-30 mt-2 hidden w-max max-w-[420px] -translate-x-1/2 rounded-xl border border-default/20 bg-content1/95 px-4 py-3 text-xs text-foreground shadow-lg backdrop-blur-md group-hover:flex group-focus-visible:flex">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-sm font-semibold leading-snug">{item.event.name}</span>
+                              <span className="text-[11px] font-normal text-default-600 leading-tight">
+                                {formatTimeRange(item.event)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       )
                     })}
@@ -421,17 +448,17 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                   </div>
                 </div>
                 {dayEvents.length === 0 && (
-                  <p className="mt-4 rounded-lg border border-dashed border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-default-600">
+                  <p className="mt-4 rounded-lg border border-dashed border-default/20 bg-default-100/60 px-4 py-3 text-sm text-default-600 dark:border-default/25 dark:bg-default-100/10 dark:text-default-300">
                     No events are locked to this day. Add an event and it will stretch across this timeline.
                   </p>
                 )}
               </div>
 
-              <div className="rounded-xl border border-emerald-100 bg-white p-4 shadow-inner">
+              <div className="rounded-xl border border-default/15 bg-content1 p-4 shadow-inner dark:border-default/25 dark:bg-content1/60">
                 <p className="text-[11px] uppercase tracking-[0.3em] text-default-500">Upcoming</p>
                 <div className="mt-4 space-y-3">
                   {prioritizedUpcoming.length === 0 ? (
-                    <p className="rounded-lg border border-dashed border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-default-600">
+                    <p className="rounded-lg border border-dashed border-default/20 bg-default-100/60 px-4 py-4 text-sm text-default-600 dark:border-default/25 dark:bg-default-100/10 dark:text-default-300">
                       Nothing scheduled yet — once events exist you&apos;ll see them here.
                     </p>
                   ) : (
@@ -628,6 +655,46 @@ function getTimelinePlacement(event: NormalizedEvent, referenceDay: Date) {
     left: (startMinutes / MINUTES_IN_DAY) * 100,
     width: (widthMinutes / MINUTES_IN_DAY) * 100,
   }
+}
+
+function buildTimelineLanes(events: NormalizedEvent[], referenceDay: Date) {
+  const dayStart = startOfDay(referenceDay)
+  const toMinutes = (date: Date) => (date.getTime() - dayStart.getTime()) / 60_000
+  const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
+
+  const normalized = events
+    .map((event) => {
+      const start = clamp(toMinutes(event.start), 0, MINUTES_IN_DAY)
+      const rawEnd = clamp(toMinutes(event.end), 0, MINUTES_IN_DAY)
+      const ensuredEnd = Math.min(
+        Math.max(rawEnd, start + MIN_TIMELINE_BLOCK_MINUTES),
+        MINUTES_IN_DAY,
+      )
+      return {
+        event,
+        start,
+        end: ensuredEnd,
+        left: (start / MINUTES_IN_DAY) * 100,
+        width: ((ensuredEnd - start) / MINUTES_IN_DAY) * 100,
+      }
+    })
+    .sort((a, b) => a.start - b.start || a.end - b.end)
+
+  const lanes: number[] = []
+
+  return normalized.map((item) => {
+    let lane = 0
+    for (; lane < lanes.length; lane++) {
+      if (item.start >= lanes[lane] - 0.5) break
+    }
+    if (lane === lanes.length) {
+      lanes.push(item.end)
+    } else {
+      lanes[lane] = item.end
+    }
+
+    return { ...item, lane }
+  })
 }
 
 /**
