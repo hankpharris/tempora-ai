@@ -57,6 +57,7 @@ type BaseEvent = {
 // Individual occurrence for display (has single start/end)
 type NormalizedEvent = {
   id: string
+  baseEventId: string
   scheduleId: string
   scheduleName: string
   name: string
@@ -309,7 +310,12 @@ export default async function CalendarPage() {
                                   return (
                                     <ExpandableEventCard
                                       key={`${day.key}-${event.id}`}
-                                      eventId={event.id}
+                                      eventId={event.baseEventId}
+                                      slotIndex={event.slotIndex}
+                                      eventStart={event.start}
+                                      eventEnd={event.end}
+                                      repeated={event.repeated}
+                                      repeatUntil={event.repeatUntil}
                                       name={event.name}
                                       description={event.description}
                                       timeRange={formatTimeRange(event)}
@@ -390,7 +396,12 @@ export default async function CalendarPage() {
                               return (
                                 <ExpandableEventCard
                                   key={`${day.key}-${event.id}`}
-                                  eventId={event.id}
+                                  eventId={event.baseEventId}
+                                  slotIndex={event.slotIndex}
+                                  eventStart={event.start}
+                                  eventEnd={event.end}
+                                  repeated={event.repeated}
+                                  repeatUntil={event.repeatUntil}
                                   name={event.name}
                                   description={event.description}
                                   timeRange={formatTimeRange(event)}
@@ -493,7 +504,12 @@ export default async function CalendarPage() {
                         return (
                           <ExpandableEventCard
                             key={`upcoming-${event.id}`}
-                            eventId={event.id}
+                            eventId={event.baseEventId}
+                            slotIndex={event.slotIndex}
+                            eventStart={event.start}
+                            eventEnd={event.end}
+                            repeated={event.repeated}
+                            repeatUntil={event.repeatUntil}
                             name={event.name}
                             description={event.description}
                             timeRange={`${formatTimeRange(event)} · ${getRelativeLabel(event.start, today)}`}
@@ -703,6 +719,7 @@ function expandRepeatingEvents(events: BaseEvent[], today: Date): NormalizedEven
         if (slotStart >= minPastDate && slotStart <= maxFutureDate) {
           expanded.push({
             id: event.startTimes.length === 1 ? event.id : `${event.id}-slot-${slotIndex}`,
+            baseEventId: event.id,
             scheduleId: event.scheduleId,
             scheduleName: event.scheduleName,
             name: event.name,
@@ -733,6 +750,7 @@ function expandRepeatingEvents(events: BaseEvent[], today: Date): NormalizedEven
           
           expanded.push({
             id: `${event.id}-slot-${slotIndex}-occ-${occurrenceIndex}`,
+            baseEventId: event.id,
             scheduleId: event.scheduleId,
             scheduleName: event.scheduleName,
             name: event.name,
