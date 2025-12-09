@@ -211,6 +211,8 @@ export function ExpandableEventCard({
   const handleDeleteClick = async (e: React.MouseEvent) => {
     e.stopPropagation()
     if (!eventId || isDeleting) return
+    const confirmed = window.confirm("Delete this event? This cannot be undone.")
+    if (!confirmed) return
     setDeleteError(null)
     setIsDeleting(true)
     try {
@@ -459,7 +461,7 @@ export function ExpandableEventCard({
                 </div>
               )}
 
-              <div className="flex items-center justify-between gap-3 pt-2">
+              <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <button
                   type="button"
                   onClick={handleDeleteClick}
@@ -467,25 +469,23 @@ export function ExpandableEventCard({
                   aria-busy={isDeleting}
                   className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm font-semibold text-danger hover:border-danger/50 hover:bg-danger/20 disabled:opacity-60"
                 >
-                  {isDeleting ? "Deleting…" : "Delete event"}
+                  {isDeleting ? "Deleting…" : "Delete"}
                 </button>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={closeEdit}
-                    className="rounded-md border border-default/30 bg-content1 px-3 py-2 text-sm font-semibold text-default-700 hover:border-default/50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    aria-busy={isSaving}
-                    className="rounded-md border border-success/40 bg-success/80 px-4 py-2 text-sm font-semibold text-white hover:bg-success/90 disabled:opacity-70"
-                  >
-                    {isSaving ? "Saving…" : "Save changes"}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={closeEdit}
+                  className="rounded-md border border-default/30 bg-content1 px-3 py-2 text-sm font-semibold text-default-700 hover:border-default/50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  aria-busy={isSaving}
+                  className="rounded-md border border-success/40 bg-success/80 px-4 py-2 text-sm font-semibold text-white hover:bg-success/90 disabled:opacity-70"
+                >
+                  {isSaving ? "Saving…" : "Save"}
+                </button>
               </div>
             </form>
           </div>
