@@ -309,6 +309,7 @@ export default async function CalendarPage() {
                                   return (
                                     <ExpandableEventCard
                                       key={`${day.key}-${event.id}`}
+                                      eventId={event.id}
                                       name={event.name}
                                       description={event.description}
                                       timeRange={formatTimeRange(event)}
@@ -389,6 +390,7 @@ export default async function CalendarPage() {
                               return (
                                 <ExpandableEventCard
                                   key={`${day.key}-${event.id}`}
+                                  eventId={event.id}
                                   name={event.name}
                                   description={event.description}
                                   timeRange={formatTimeRange(event)}
@@ -491,6 +493,7 @@ export default async function CalendarPage() {
                         return (
                           <ExpandableEventCard
                             key={`upcoming-${event.id}`}
+                            eventId={event.id}
                             name={event.name}
                             description={event.description}
                             timeRange={`${formatTimeRange(event)} · ${getRelativeLabel(event.start, today)}`}
