@@ -91,10 +91,10 @@ model Event {
   scheduleId  String          @map("schedule_id")
   name        String
   description String?
-  start       DateTime[]      // Array of start times for this event's time slots
-  end         DateTime[]      // Array of end times (must match start array length)
+  start       DateTime[]      @db.Timestamptz // Array of start times for this event's time slots
+  end         DateTime[]      @db.Timestamptz // Array of end times (must match start array length)
   repeated    RepeatFrequency @default(NEVER)
-  repeatUntil DateTime?       @map("repeat_until") // null = repeat forever (if repeated != NEVER)
+  repeatUntil DateTime?       @map("repeat_until") @db.Timestamptz // null = repeat forever (if repeated != NEVER)
   createdAt   DateTime        @default(now())
   updatedAt   DateTime        @updatedAt
 

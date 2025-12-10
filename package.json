@@ -60,6 +60,8 @@
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.0",
     "csv-parse": "^6.1.0",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
     "framer-motion": "^12.23.24",
     "langchain": "^1.0.6",
     "lodash": "^4.17.21",
