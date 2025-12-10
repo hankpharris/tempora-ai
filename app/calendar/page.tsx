@@ -1,7 +1,8 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
+import { CreateEventOverlayTriggerClient } from "@/components/CreateEventOverlayTriggerClient"
 import { ExpandableEventCard } from "@/components/ExpandableEventCard"
-import { ManageFriendshipsButton } from "@/components/ManageFriendshipsButton"
+import { LocalTimeRange } from "@/components/LocalTimeRange"
 import { MovingBlob } from "@/components/MovingBlob"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -18,8 +19,12 @@ const COLOR_TOKENS = ["primary", "secondary", "success", "warning", "danger"] as
 const DAY_MS = 86_400_000
 const MINUTES_IN_DAY = 1_440
 const MIN_TIMELINE_BLOCK_MINUTES = 45
+const HOUR_HEIGHT = 48
+const WEEK_HEADER_HEIGHT = 40
+const TOTAL_DAY_HEIGHT = WEEK_HEADER_HEIGHT + HOUR_HEIGHT * 24
 const SECTION_SNAP_CLASS =
-  "snap-start h-[92vh] px-6 py-8 md:px-10 lg:px-16 flex items-stretch"
+  "snap-start min-h-screen px-4 py-10 md:px-8 lg:px-12 flex items-stretch"
+const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" })
 const DAY_NUMBER_FORMATTER = new Intl.DateTimeFormat("en-US", { day: "numeric" })
@@ -56,6 +61,7 @@ type BaseEvent = {
 // Individual occurrence for display (has single start/end)
 type NormalizedEvent = {
   id: string
+  baseEventId: string
   scheduleId: string
   scheduleName: string
   name: string
@@ -161,133 +167,81 @@ export default async function CalendarPage() {
   const today = new Date()
 
   // Expand repeating events into individual occurrences (one per time slot per repetition)
-  const normalizedEvents = expandRepeatingEvents(baseEvents, today).sort(
-    (a, b) => a.start.getTime() - b.start.getTime()
-  )
-  const monthLabel = MONTH_FORMATTER.format(today)
-  const eventsByDate = groupEventsByDate(normalizedEvents)
-  const monthMatrix = buildMonthMatrix(today, eventsByDate)
-  const weekDays = buildWeekDays(today, eventsByDate)
-  const weekRangeLabel = formatWeekRangeLabel(weekDays)
-  const focusedDay = resolveFocusedDay(weekDays)
-  const dayEvents = focusedDay?.events ?? []
-
-  const totalSchedules = schedules.length
-  const totalEvents = normalizedEvents.length
-  const eventsThisMonth = normalizedEvents.filter(
-    (event) =>
-      event.start.getFullYear() === today.getFullYear() &&
-      event.start.getMonth() === today.getMonth(),
-  ).length
-  const activeDaysThisMonth = monthMatrix
-    .flat()
-    .filter((day) => day.isCurrentMonth && day.events.length > 0).length
-  const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
+const normalizedEvents = expandRepeatingEvents(baseEvents, today).sort(
+  (a, b) => a.start.getTime() - b.start.getTime()
+)
+const monthLabel = MONTH_FORMATTER.format(today)
+const eventsByDate = groupEventsByDate(normalizedEvents)
+const monthMatrix = buildMonthMatrix(today, eventsByDate)
+const weekDays = buildWeekDays(today, eventsByDate)
+const weekRangeLabel = formatWeekRangeLabel(weekDays)
+const focusedDay = resolveFocusedDay(weekDays)
+const dayEvents = focusedDay?.events ?? []
+const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
 
   const upcomingEvents = normalizedEvents.filter((event) => event.end.getTime() >= today.getTime())
   const highlightedEvent = upcomingEvents[0] ?? normalizedEvents[0] ?? null
   const prioritizedUpcoming =
     upcomingEvents.length > 0 ? upcomingEvents.slice(0, 4) : normalizedEvents.slice(0, 4)
 
-  const greetingName =
-    session.user.name ??
-    session.user.email?.split("@")[0] ??
-    (session.user.email ?? "there")
-
   return (
-    <div className="relative h-screen overflow-hidden bg-gradient-to-br from-background via-default-50 to-default-100/40 text-foreground">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-background via-default-100/15 to-default-200/20 text-foreground">
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <MovingBlob
           size={420}
           speed={50}
-          colorClass="bg-primary/18"
+          colorClass="bg-primary/16"
           blurClass="blur-[120px]"
-          className="animate-blob-slow"
+          className="animate-blob-slow mix-blend-screen"
         />
         <MovingBlob
-          size={300}
+          size={340}
           speed={64}
           delay={1500}
-          colorClass="bg-secondary/16"
+          colorClass="bg-secondary/18"
           blurClass="blur-[110px]"
-          className="animate-blob-medium"
-        />
-        <MovingBlob
-          size={520}
-          speed={42}
-          delay={2600}
-          overshoot={260}
-          colorClass="bg-primary/12"
-          blurClass="blur-[140px]"
-          className="animate-blob-reverse"
+          className="animate-blob-medium mix-blend-screen"
         />
       </div>
 
-      <main className="relative z-10 h-full snap-y snap-mandatory overflow-y-auto">
+      <main className="relative z-10 h-screen snap-y snap-mandatory overflow-y-auto">
         <section className={SECTION_SNAP_CLASS}>
-          <div className="mx-auto flex h-full w-full max-w-6xl flex-col min-h-0">
-            <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[32px] border border-primary/15 bg-content1/70 p-8 shadow-2xl backdrop-blur-xl dark:bg-content1/60">
-              <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <div className="flex items-center gap-4">
-                    <p className="text-xs uppercase tracking-[0.35em] text-primary/70">
-                      Hello, {greetingName}
-                    </p>
-                    <ManageFriendshipsButton className="h-6 min-h-6 text-[10px] px-3 rounded-lg" />
-                  </div>
-                  <h1 className="mt-2 text-4xl font-semibold text-foreground">Tempora calendar</h1>
-                  <p className="mt-2 max-w-2xl text-sm text-default-600">
-                    Glide through your schedule with stacked perspectives. Scroll to morph from a
-                    month bird&apos;s-eye to weekly focus and down to a precise daily timeline.
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-left text-sm">
-                  <StatCard label="Schedules" value={totalSchedules} emphasis />
-                  <StatCard label="Events tracked" value={totalEvents} />
-                  <StatCard label="This month" value={eventsThisMonth} helper="entries" />
-                  <StatCard label="Active days" value={activeDaysThisMonth} helper={monthLabel} />
-                </div>
-              </div>
-              <div className="mt-6 flex flex-1 min-h-0 flex-col rounded-3xl border border-default/20 bg-background/70 p-6 shadow-inner">
-                <div className="flex flex-col gap-3 rounded-2xl border border-default/20 bg-content1/60 p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="mx-auto flex h-full w-full max-w-[1600px] flex-col min-h-0 gap-6">
+            <div className="grid flex-1 min-h-0 grid-cols-1 gap-6 px-2 lg:grid-cols-[3fr,1.1fr] lg:px-0">
+              <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-default/20 bg-content1/80 shadow-2xl px-3 lg:px-4 dark:border-default/25 dark:bg-content1/60">
+                <div className="flex flex-wrap items-center justify-between gap-4 border-b border-default/15 px-6 py-4">
                   <div>
-                    <p className="text-xs uppercase tracking-[0.35em] text-default-500">Month view</p>
+                    <p className="text-[11px] uppercase tracking-[0.35em] text-default-500">Month</p>
                     <h2 className="text-2xl font-semibold text-foreground">{monthLabel}</h2>
                   </div>
-                  <div className="flex flex-col gap-1 text-sm text-default-600">
-                    {highlightedEvent ? (
-                      <>
-                        <span className="text-xs uppercase tracking-[0.3em] text-default-500">
-                          Next event
-                        </span>
-                        <p className="text-base font-semibold text-foreground">
-                          {highlightedEvent.name}
-                        </p>
-                        <p>{formatTimeRange(highlightedEvent)}</p>
-                      </>
-                    ) : (
-                      <p>No upcoming events logged.</p>
-                    )}
+                  <div className="flex items-center gap-3 text-sm text-default-500">
+                    <span className="hidden rounded-full border border-default/20 bg-default-100/60 px-3 py-1 dark:border-default/30 dark:bg-default-100/10 sm:inline-flex">
+                      {highlightedEvent ? `Next: ${highlightedEvent.name}` : "No upcoming events"}
+                    </span>
+                    <CreateEventOverlayTriggerClient
+                      triggerClassName="inline-flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary/90 hover:border-primary/60 hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                      triggerLabel="Create event"
+                    />
                   </div>
                 </div>
 
-                <div className="mt-6 flex-1 min-h-0 overflow-hidden rounded-2xl border border-default/10 bg-background/70">
-                  <div className="flex h-full flex-col overflow-auto pr-2">
-                    <div className="grid grid-cols-7 gap-2 border-b border-default/20 bg-background/95 px-4 pb-3 pt-3 text-xs uppercase tracking-[0.35em] text-default-400 sticky top-0 z-10">
+                <div className="flex-1 overflow-hidden">
+                  <div className="flex h-full flex-col overflow-auto">
+                    <div className="grid grid-cols-7 border-b border-default/15 bg-content1 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.35em] text-default-500">
                       {WEEKDAY_HEADER.map((label) => (
                         <span key={label} className="text-center">
                           {label}
                         </span>
                       ))}
                     </div>
-                    <div className="grid grid-cols-7 gap-3 px-4 pb-4 pt-4 auto-rows-[minmax(7rem,_auto)]">
+                    <div className="grid grid-cols-7 gap-3 px-4 pb-6 pt-4 auto-rows-[minmax(9rem,_auto)]">
                       {monthMatrix.flat().map((day) => (
                         <div
                           key={day.key}
-                          className={`rounded-2xl border p-3 transition-colors ${
+                          className={`rounded-xl border p-3 transition-colors ${
                             day.isCurrentMonth
-                              ? "border-default/30 bg-content1/80"
-                              : "border-default/10 bg-default-100/40 opacity-60"
+                              ? "border-default/20 bg-content1"
+                              : "border-default/10 bg-default-100/60 opacity-90"
                           } ${day.isToday ? "ring-2 ring-primary/60" : ""}`}
                         >
                           <div className="flex items-center justify-between text-sm font-semibold">
@@ -303,11 +257,17 @@ export default async function CalendarPage() {
                               <p className="text-xs text-default-500">No events</p>
                             ) : (
                               <>
-                                {day.events.slice(0, 2).map((event) => {
+                                {day.events.slice(0, 3).map((event) => {
                                   const styles = COLOR_STYLES[event.colorToken]
                                   return (
                                     <ExpandableEventCard
                                       key={`${day.key}-${event.id}`}
+                                      eventId={event.baseEventId}
+                                      slotIndex={event.slotIndex}
+                                      eventStart={event.start}
+                                      eventEnd={event.end}
+                                      repeated={event.repeated}
+                                      repeatUntil={event.repeatUntil}
                                       name={event.name}
                                       description={event.description}
                                       timeRange={formatTimeRange(event)}
@@ -316,10 +276,8 @@ export default async function CalendarPage() {
                                     />
                                   )
                                 })}
-                                {day.events.length > 2 && (
-                                  <p className="text-[11px] text-default-600">
-                                    +{day.events.length - 2} more
-                                  </p>
+                                {day.events.length > 3 && (
+                                  <p className="text-[11px] text-default-500">+{day.events.length - 3} more</p>
                                 )}
                               </>
                             )}
@@ -330,171 +288,187 @@ export default async function CalendarPage() {
                   </div>
                 </div>
               </div>
-              <p className="mt-6 text-xs uppercase tracking-[0.4em] text-default-500">
-                Scroll ↓ for weekly focus
-              </p>
+
+            
             </div>
+            <div className="text-xs uppercase tracking-[0.35em] text-default-500">Scroll ↓ for weekly focus</div>
           </div>
         </section>
 
         <section className={SECTION_SNAP_CLASS}>
-          <div className="mx-auto flex h-full w-full max-w-6xl flex-col">
-            <div className="flex h-full flex-col overflow-hidden rounded-[32px] border border-secondary/20 bg-content1/70 p-8 shadow-2xl backdrop-blur-xl dark:bg-content1/60">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-secondary/70">
-                    Weekly focus
-                  </p>
-                  <h2 className="text-3xl font-semibold text-foreground">{weekRangeLabel}</h2>
-                  <p className="mt-2 max-w-xl text-sm text-default-600">
-                    The same data, zoomed into seven day pockets. Use this slice to balance load and
-                    spot clusters.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-secondary/30 bg-secondary/10 px-5 py-4 text-sm font-semibold text-foreground">
-                  {weekEventCount} event{weekEventCount === 1 ? "" : "s"} scheduled this week
-                </div>
+          <div className="mx-auto flex h-full w-full max-w-[1600px] flex-col gap-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.35em] text-default-500">Weekly focus</p>
+                <h2 className="text-2xl font-semibold text-foreground">{weekRangeLabel}</h2>
+                <p className="text-sm text-default-500">Hour-by-hour view across the next seven days.</p>
               </div>
+              <div className="rounded-lg border border-default/25 bg-default-100/60 px-4 py-2 text-sm font-semibold text-default-700 dark:border-default/30 dark:bg-default-100/10 dark:text-default-200">
+                {weekEventCount} event{weekEventCount === 1 ? "" : "s"} this week
+              </div>
+            </div>
 
-              <div className="mt-8 flex-1 overflow-hidden">
-                <div className="grid h-full grid-cols-1 gap-4 overflow-auto pr-1 md:grid-cols-7">
-                  {weekDays.map((day) => (
-                    <div
-                      key={day.key}
-                      className={`flex h-full flex-col rounded-3xl border bg-background/70 p-4 shadow-sm transition-colors ${
-                        day.isToday ? "border-secondary/50 shadow-secondary/30" : "border-default/20"
-                      }`}
-                    >
-                      <div className="space-y-1">
-                        <p className="text-[11px] uppercase tracking-[0.3em] text-default-500">
-                          {day.weekdayLabel}
-                        </p>
-                        <p className="text-lg font-semibold text-foreground">{day.monthDayLabel}</p>
-                      </div>
-                      <div className="mt-3 flex flex-1 flex-col gap-3">
-                        {day.events.length === 0 ? (
-                          <p className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-default/30 bg-content1/40 px-3 py-4 text-xs text-default-500">
-                            Quiet day
-                          </p>
-                        ) : (
-                          <div className="flex flex-1 flex-col gap-3 overflow-auto pr-1">
-                            {day.events.map((event) => {
-                              const styles = COLOR_STYLES[event.colorToken]
-                              return (
-                                <ExpandableEventCard
-                                  key={`${day.key}-${event.id}`}
-                                  name={event.name}
-                                  description={event.description}
-                                  timeRange={formatTimeRange(event)}
-                                  styles={styles}
-                                  variant="default"
-                                />
-                              )
-                            })}
-                          </div>
-                        )}
-                      </div>
+            <div className="flex min-h-[960px] flex-1 overflow-hidden rounded-2xl border border-default/20 bg-content1/80 shadow-2xl p-3 dark:border-default/25 dark:bg-content1/60">
+              <div
+                className="w-16 border-r border-default/15 pr-3 pt-[40px] dark:border-default/25"
+                style={{ height: TOTAL_DAY_HEIGHT }}
+              >
+                {HOURS.map((hour) => (
+                  <div key={hour} className="h-[48px] text-[11px] uppercase tracking-[0.2em] text-default-500">
+                    {hour === 0 ? "12 AM" : hour < 12 ? `${hour} AM` : hour === 12 ? "12 PM" : `${hour - 12} PM`}
+                  </div>
+                ))}
+              </div>
+              <div className="grid flex-1 grid-cols-7 gap-3">
+                {weekDays.map((day) => (
+                  <div
+                    key={day.key}
+                    className="relative overflow-hidden rounded-xl border border-default/15 bg-default-100/40 dark:border-default/20 dark:bg-default-100/5"
+                    style={{ height: TOTAL_DAY_HEIGHT }}
+                  >
+                    <div className="flex h-[40px] items-center justify-between border-b border-default/15 bg-content1/70 px-3 text-xs font-semibold text-foreground">
+                      <span className="text-[10px] uppercase tracking-[0.3em] text-default-500">{day.weekdayLabel}</span>
+                      <span className="text-sm">{DAY_NUMBER_FORMATTER.format(day.date)}</span>
                     </div>
-                  ))}
-                </div>
-              </div>
-              <p className="mt-6 text-xs uppercase tracking-[0.4em] text-default-500">
-                Scroll ↓ for the daily stream
-              </p>
-            </div>
-          </div>
-        </section>
-
-        <section className={SECTION_SNAP_CLASS}>
-          <div className="mx-auto flex h-full w-full max-w-6xl flex-col">
-            <div className="flex h-full flex-col overflow-hidden rounded-[32px] border border-primary/20 bg-content1/70 p-8 shadow-2xl backdrop-blur-xl dark:bg-content1/60">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.35em] text-primary/70">Day stream</p>
-                  {focusedDay ? (
-                    <>
-                      <h2 className="text-3xl font-semibold text-foreground">
-                        {DAY_DETAIL_FORMATTER.format(focusedDay.date)}
-                      </h2>
-                      <p className="text-sm text-default-600">
-                        {getRelativeLabel(focusedDay.date, today)}
-                      </p>
-                    </>
-                  ) : (
-                    <h2 className="text-3xl font-semibold text-foreground">Daily detail</h2>
-                  )}
-                </div>
-                <div className="rounded-2xl border border-primary/30 bg-primary/10 px-5 py-4 text-sm font-semibold text-foreground">
-                  {dayEvents.length} event{dayEvents.length === 1 ? "" : "s"} in focus
-                </div>
-              </div>
-
-              <div className="mt-8 flex flex-1 flex-col gap-6 overflow-hidden lg:flex-row">
-                <div className="flex-1 rounded-3xl border border-default/20 bg-background/70 p-6 shadow-inner">
-                  <p className="text-xs uppercase tracking-[0.3em] text-default-500">Timeline</p>
-                  <div className="relative mt-4 h-56 rounded-2xl border border-default/20 bg-content1/50 p-4">
-                    <div className="absolute inset-x-6 top-1/2 -translate-y-1/2 border-t border-dashed border-default/40" />
-                    {focusedDay &&
-                      dayEvents.map((event, index) => {
-                        const placement = getTimelinePlacement(event, focusedDay.date)
+                    <div className="absolute inset-x-0 bottom-0 top-[40px]">
+                      {HOURS.map((hour) => (
+                        <div key={hour} className="h-[48px] border-t border-default/10 dark:border-default/20" />
+                      ))}
+                    </div>
+                    <div className="absolute left-0 right-0 top-[40px] h-[calc(100%-40px)] px-2 pb-4">
+                      {day.events.map((event, idx) => {
                         const styles = COLOR_STYLES[event.colorToken]
-                        const laneOffset = 20 + (index % 2) * 48
+                        const dayStart = startOfDay(day.date)
+                        const rawStart = (event.start.getTime() - dayStart.getTime()) / 60000
+                        const rawEnd = (event.end.getTime() - dayStart.getTime()) / 60000
+                        const startMinutes = Math.max(0, Math.min(MINUTES_IN_DAY, rawStart))
+                        const durationMinutes = Math.max(rawEnd - rawStart, MIN_TIMELINE_BLOCK_MINUTES)
+                        const endMinutes = Math.min(MINUTES_IN_DAY, startMinutes + durationMinutes)
+                        const topPx = (startMinutes / 60) * HOUR_HEIGHT
+                        const heightPx = ((endMinutes - startMinutes) / 60) * HOUR_HEIGHT
                         return (
                           <div
-                            key={event.id}
-                            className={`absolute rounded-2xl border px-3 py-2 text-xs font-semibold shadow-sm ${styles.border} ${styles.surface} ${styles.text}`}
-                            style={{
-                              left: `${placement.left}%`,
-                              width: `${placement.width}%`,
-                              top: `${laneOffset}px`,
-                            }}
+                            key={`${event.id}-${idx}`}
+                            className={`absolute left-1 right-1 overflow-hidden rounded-lg border px-3 py-2 text-xs font-semibold shadow ${styles.border} ${styles.surface} ${styles.text}`}
+                            style={{ top: topPx, height: heightPx }}
                           >
-                            <p>{event.name}</p>
-                            <p className="text-[11px] font-normal text-default-600">
-                              {formatTimeRange(event)}
-                            </p>
+                            <p className="text-sm font-semibold leading-tight truncate">{event.name}</p>
                           </div>
                         )
                       })}
-                    <div className="absolute bottom-3 left-4 right-4 flex justify-between text-[10px] uppercase tracking-[0.3em] text-default-500">
-                      <span>12a</span>
-                      <span>6a</span>
-                      <span>Noon</span>
-                      <span>6p</span>
-                      <span>12a</span>
                     </div>
                   </div>
-                  {dayEvents.length === 0 && (
-                    <p className="mt-4 rounded-2xl border border-dashed border-default/30 bg-content1/50 px-4 py-3 text-sm text-default-600">
-                      No events are locked to this day. Add an event and it will stretch across this
-                      horizontal timeline.
-                    </p>
-                  )}
-                </div>
+                ))}
+              </div>
+            </div>
+            <div className="text-xs uppercase tracking-[0.35em] text-default-500">Scroll ↓ for daily focus</div>
+          </div>
+        </section>
 
-                <div className="w-full rounded-3xl border border-default/20 bg-background/80 p-6 shadow-inner lg:w-80">
-                  <p className="text-xs uppercase tracking-[0.3em] text-default-500">Upcoming</p>
-                  <div className="mt-4 space-y-3">
-                    {prioritizedUpcoming.length === 0 ? (
-                      <p className="rounded-2xl border border-dashed border-default/30 bg-content1/40 px-4 py-4 text-sm text-default-600">
-                        Nothing scheduled yet — once events exist you&apos;ll see them here.
-                      </p>
-                    ) : (
-                      prioritizedUpcoming.map((event) => {
-                        const styles = COLOR_STYLES[event.colorToken]
-                        return (
-                          <ExpandableEventCard
-                            key={`upcoming-${event.id}`}
-                            name={event.name}
-                            description={event.description}
-                            timeRange={`${formatTimeRange(event)} · ${getRelativeLabel(event.start, today)}`}
-                            styles={styles}
-                            variant="default"
-                          />
-                        )
-                      })
-                    )}
+        <section className={SECTION_SNAP_CLASS}>
+          <div className="mx-auto flex h-full w-full max-w-[1600px] flex-col gap-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.35em] text-primary/70">Day stream</p>
+                {focusedDay ? (
+                  <>
+                    <h2 className="text-2xl font-semibold text-foreground">{DAY_DETAIL_FORMATTER.format(focusedDay.date)}</h2>
+                    <p className="text-sm text-default-500">{getRelativeLabel(focusedDay.date, today)}</p>
+                  </>
+                ) : (
+                  <h2 className="text-2xl font-semibold text-foreground">Daily detail</h2>
+                )}
+              </div>
+              <div className="rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-foreground dark:border-primary/40 dark:bg-primary/20">
+                {dayEvents.length} event{dayEvents.length === 1 ? "" : "s"} in focus
+              </div>
+            </div>
+
+            <div className="grid flex-1 grid-cols-1 gap-4 rounded-2xl border border-default/20 bg-content1/80 p-4 shadow-2xl dark:border-default/25 dark:bg-content1/60 lg:grid-cols-[1.3fr,0.7fr]">
+              <div className="flex flex-col rounded-xl border border-default/15 bg-content1 p-4 shadow-inner dark:border-default/25 dark:bg-content1/60">
+                <p className="text-[11px] uppercase tracking-[0.3em] text-default-500">Timeline</p>
+                <div className="relative mt-4 h-64 rounded-xl border border-default/15 bg-default-100/60 p-4 dark:border-default/25 dark:bg-default-100/10">
+                  <div className="absolute inset-x-6 top-1/2 -translate-y-1/2 border-t border-dashed border-default/20" />
+                  {focusedDay &&
+                    buildTimelineLanes(dayEvents, focusedDay.date).map((item) => {
+                      const styles = COLOR_STYLES[item.event.colorToken]
+                      const laneOffset = 16 + item.lane * 60
+                      return (
+                        <div
+                          key={`${item.event.id}-${item.lane}-${item.event.slotIndex}`}
+                          tabIndex={0}
+                          className={`group absolute rounded-xl border px-3 py-2 text-xs font-semibold shadow-sm ${styles.border} ${styles.surface} ${styles.text} focus-visible:outline-none`}
+                          style={{
+                            left: `${item.left}%`,
+                            width: `${item.width}%`,
+                            top: `${laneOffset}px`,
+                          }}
+                        >
+                          <div className="overflow-hidden">
+                            <p className="text-sm font-semibold leading-tight truncate">{item.event.name}</p>
+                            <LocalTimeRange
+                              start={item.event.start}
+                              end={item.event.end}
+                              className="text-[11px] font-normal text-default-600 leading-snug truncate"
+                            />
+                          </div>
+                          <div className="pointer-events-none absolute inset-0 rounded-xl ring-primary/0 transition group-hover:ring-2 group-focus-visible:ring-2" />
+                          <div className="absolute left-1/2 top-full z-30 mt-2 hidden w-max max-w-[420px] -translate-x-1/2 rounded-xl border border-default/20 bg-content1/95 px-4 py-3 text-xs text-foreground shadow-lg backdrop-blur-md group-hover:flex group-focus-visible:flex">
+                            <div className="flex flex-col gap-1">
+                              <span className="text-sm font-semibold leading-snug">{item.event.name}</span>
+                              <LocalTimeRange
+                                start={item.event.start}
+                                end={item.event.end}
+                                className="text-[11px] font-normal text-default-600 leading-tight"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  <div className="absolute bottom-3 left-4 right-4 flex justify-between text-[10px] uppercase tracking-[0.3em] text-default-500">
+                    <span>12a</span>
+                    <span>6a</span>
+                    <span>Noon</span>
+                    <span>6p</span>
+                    <span>12a</span>
                   </div>
+                </div>
+                {dayEvents.length === 0 && (
+                  <p className="mt-4 rounded-lg border border-dashed border-default/20 bg-default-100/60 px-4 py-3 text-sm text-default-600 dark:border-default/25 dark:bg-default-100/10 dark:text-default-300">
+                    No events are locked to this day. Add an event and it will stretch across this timeline.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-default/15 bg-content1 p-4 shadow-inner dark:border-default/25 dark:bg-content1/60">
+                <p className="text-[11px] uppercase tracking-[0.3em] text-default-500">Upcoming</p>
+                <div className="mt-4 space-y-3">
+                  {prioritizedUpcoming.length === 0 ? (
+                    <p className="rounded-lg border border-dashed border-default/20 bg-default-100/60 px-4 py-4 text-sm text-default-600 dark:border-default/25 dark:bg-default-100/10 dark:text-default-300">
+                      Nothing scheduled yet — once events exist you&apos;ll see them here.
+                    </p>
+                  ) : (
+                    prioritizedUpcoming.map((event) => {
+                      const styles = COLOR_STYLES[event.colorToken]
+                      return (
+                        <ExpandableEventCard
+                          key={`upcoming-${event.id}`}
+                          eventId={event.baseEventId}
+                          slotIndex={event.slotIndex}
+                          eventStart={event.start}
+                          eventEnd={event.end}
+                          repeated={event.repeated}
+                          repeatUntil={event.repeatUntil}
+                          name={event.name}
+                          description={event.description}
+                          timeRange={`${formatTimeRange(event)} · ${getRelativeLabel(event.start, today)}`}
+                          styles={styles}
+                          variant="default"
+                        />
+                      )
+                    })
+                  )}
                 </div>
               </div>
             </div>
@@ -650,24 +624,45 @@ function getRelativeLabel(target: Date, today: Date) {
   return diff > 0 ? `In ${distance}` : `${distance} ago`
 }
 
-function getTimelinePlacement(event: NormalizedEvent, referenceDay: Date) {
+function buildTimelineLanes(events: NormalizedEvent[], referenceDay: Date) {
   const dayStart = startOfDay(referenceDay)
-  const minutesSinceStart = (date: Date) => (date.getTime() - dayStart.getTime()) / 60_000
+  const toMinutes = (date: Date) => (date.getTime() - dayStart.getTime()) / 60_000
   const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
 
-  const startMinutes = clamp(minutesSinceStart(event.start), 0, MINUTES_IN_DAY)
-  const rawEndMinutes = clamp(minutesSinceStart(event.end), 0, MINUTES_IN_DAY)
-  const ensuredEnd = Math.min(
-    Math.max(rawEndMinutes, startMinutes + MIN_TIMELINE_BLOCK_MINUTES),
-    MINUTES_IN_DAY,
-  )
+  const normalized = events
+    .map((event) => {
+      const start = clamp(toMinutes(event.start), 0, MINUTES_IN_DAY)
+      const rawEnd = clamp(toMinutes(event.end), 0, MINUTES_IN_DAY)
+      const ensuredEnd = Math.min(
+        Math.max(rawEnd, start + MIN_TIMELINE_BLOCK_MINUTES),
+        MINUTES_IN_DAY,
+      )
+      return {
+        event,
+        start,
+        end: ensuredEnd,
+        left: (start / MINUTES_IN_DAY) * 100,
+        width: ((ensuredEnd - start) / MINUTES_IN_DAY) * 100,
+      }
+    })
+    .sort((a, b) => a.start - b.start || a.end - b.end)
 
-  const widthMinutes = ensuredEnd - startMinutes
+  const lanes: number[] = []
 
-  return {
-    left: (startMinutes / MINUTES_IN_DAY) * 100,
-    width: (widthMinutes / MINUTES_IN_DAY) * 100,
-  }
+  return normalized.map((item) => {
+    let lane = 0
+    for (; lane < lanes.length; lane++) {
+      const laneEnd = lanes[lane] ?? -Infinity
+      if (item.start >= laneEnd - 0.5) break
+    }
+    if (lane === lanes.length) {
+      lanes.push(item.end)
+    } else {
+      lanes[lane] = item.end
+    }
+
+    return { ...item, lane }
+  })
 }
 
 /**
@@ -694,6 +689,7 @@ function expandRepeatingEvents(events: BaseEvent[], today: Date): NormalizedEven
         if (slotStart >= minPastDate && slotStart <= maxFutureDate) {
           expanded.push({
             id: event.startTimes.length === 1 ? event.id : `${event.id}-slot-${slotIndex}`,
+            baseEventId: event.id,
             scheduleId: event.scheduleId,
             scheduleName: event.scheduleName,
             name: event.name,
@@ -724,6 +720,7 @@ function expandRepeatingEvents(events: BaseEvent[], today: Date): NormalizedEven
           
           expanded.push({
             id: `${event.id}-slot-${slotIndex}-occ-${occurrenceIndex}`,
+            baseEventId: event.id,
             scheduleId: event.scheduleId,
             scheduleName: event.scheduleName,
             name: event.name,
@@ -773,26 +770,3 @@ function getNextOccurrence(current: Date, frequency: string): Date {
   
   return next
 }
-
-type StatCardProps = {
-  label: string
-  value: number
-  helper?: string
-  emphasis?: boolean
-}
-
-function StatCard({ label, value, helper, emphasis }: StatCardProps) {
-  return (
-    <div
-      className={`rounded-2xl border px-4 py-3 text-left ${
-        emphasis ? "border-primary/40 bg-primary/10" : "border-default/25 bg-background/60"
-      }`}
-    >
-      <p className="text-[11px] uppercase tracking-[0.3em] text-default-500">{label}</p>
-      <p className="text-2xl font-semibold text-foreground">{value}</p>
-      {helper ? <p className="text-xs text-default-500">{helper}</p> : null}
-    </div>
-  )
-}
-
-
