@@ -68,7 +68,6 @@ export async function POST(req: Request) {
     // Validate and parse time slots
     const startDates: Date[] = []
     const endDates: Date[] = []
-
     for (let i = 0; i < data.timeSlots.length; i++) {
       const slot = data.timeSlots[i]
       if (!slot) continue

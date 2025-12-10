@@ -16,7 +16,13 @@ const updateEventSchema = z.object({
   timeSlots: z.array(timeSlotSchema).min(1).optional(),
   slotIndex: z.number().int().nonnegative().optional(),
   repeated: z.enum(["NEVER", "DAILY", "WEEKLY", "MONTHLY"]).optional(),
-  repeatUntil: isoDateSchema.nullable().optional(),
+  repeatUntil: z
+    .union([
+      z.string().datetime(),
+      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use format YYYY-MM-DD"),
+    ])
+    .nullable()
+    .optional(),
 })
 
 function parseIsoDate(value: string, label: string) {
@@ -142,7 +148,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ? current.repeatUntil
       : data.repeatUntil === null
         ? null
-        : parseIsoDate(data.repeatUntil, "repeatUntil")
+        : parseIsoDate(
+            data.repeatUntil.length === 10 ? `${data.repeatUntil}T00:00` : data.repeatUntil,
+            "repeatUntil",
+          )
 
     if (nextRepeatUntil && updatedStart[0] && nextRepeatUntil <= updatedStart[0]) {
       return NextResponse.json({ error: "repeatUntil must be after the first time slot." }, { status: 400 })

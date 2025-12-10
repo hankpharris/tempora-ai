@@ -16,13 +16,13 @@ type ColorStyles = {
 type ExpandableEventCardProps = {
   eventId?: string
   slotIndex?: number
-  eventStart?: Date
-  eventEnd?: Date
+  eventStart?: Date | string
+  eventEnd?: Date | string
   repeated?: string
   repeatUntil?: Date | null
   name: string
   description: string | null
-  timeRange: string
+  timeRange?: string
   styles: ColorStyles
   variant?: "compact" | "default"
 }
@@ -73,14 +73,16 @@ export function ExpandableEventCard({
   const [editRepeat, setEditRepeat] = useState<RepeatOption>(
     (repeated as RepeatOption | undefined) ?? "NEVER",
   )
+  const startValue = eventStart ? new Date(eventStart) : undefined
+  const endValue = eventEnd ? new Date(eventEnd) : undefined
   const defaultDateTimes = useMemo(() => {
-    const start = eventStart ?? new Date()
-    const end = eventEnd ?? new Date(start.getTime() + 60 * 60_000)
+    const start = startValue ?? new Date()
+    const end = endValue ?? new Date(start.getTime() + 60 * 60_000)
     return {
       start: splitLocalInputValue(toLocalInputValue(start)),
       end: splitLocalInputValue(toLocalInputValue(end)),
     }
-  }, [eventStart, eventEnd])
+  }, [startValue, endValue])
   const [editDate, setEditDate] = useState(defaultDateTimes.start.date)
   const [editStartTime, setEditStartTime] = useState(defaultDateTimes.start.time)
   const [editEndTime, setEditEndTime] = useState(defaultDateTimes.end.time)
@@ -91,6 +93,13 @@ export function ExpandableEventCard({
   const hasDescription = description && description.length > 0
   const hasLongName = name.length > 20
   const isExpandable = hasDescription || hasLongName
+  const displayTimeRange = useMemo(() => {
+    if (startValue && !Number.isNaN(startValue.getTime()) && endValue && !Number.isNaN(endValue.getTime())) {
+      const formatter = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" })
+      return `${formatter.format(startValue)} – ${formatter.format(endValue)}`
+    }
+    return timeRange
+  }, [endValue, startValue, timeRange])
 
   const handleClick = (e: React.MouseEvent) => {
     if (isExpandable) {
@@ -165,8 +174,8 @@ export function ExpandableEventCard({
     }
 
     const repeatUntilISO =
-      editRepeat !== "NEVER" && editRepeatUntil ? new Date(editRepeatUntil).toISOString() : null
-    if (repeatUntilISO && new Date(repeatUntilISO) <= new Date(startISO)) {
+      editRepeat !== "NEVER" && editRepeatUntil ? new Date(`${editRepeatUntil}T00:00`).toISOString() : null
+    if (repeatUntilISO && new Date(repeatUntilISO) <= startDate) {
       setEditError("Repeat-until must be after the first time slot")
       return
     }
@@ -313,7 +322,7 @@ export function ExpandableEventCard({
             </button>
           )}
         </div>
-        <p className="text-[11px] text-default-600">{timeRange}</p>
+        <p className="text-[11px] text-default-600">{displayTimeRange}</p>
         {isExpanded && hasDescription && (
           <p className="text-xs text-default-700 mt-2 whitespace-pre-wrap">
             {description}
@@ -347,7 +356,7 @@ export function ExpandableEventCard({
             </button>
           )}
         </div>
-        <p className="text-default-600">{timeRange}</p>
+        <p className="text-default-600">{displayTimeRange}</p>
         {!isExpanded && hasDescription && (
           <p className="text-[10px] text-default-500 mt-1">+ details</p>
         )}

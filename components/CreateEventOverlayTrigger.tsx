@@ -43,9 +43,10 @@ function getDefaultDateTimes() {
   return { start: toLocalInputValue(start), end: toLocalInputValue(end) }
 }
 
-function combineLocalDateTimeToISO(dateStr?: string, timeStr?: string) {
+function combineLocalDateTime(dateStr?: string, timeStr?: string) {
   const d = dateStr ?? new Date().toISOString().slice(0, 10)
   const t = timeStr ?? "00:00"
+  // Build a local Date and convert to UTC ISO
   return new Date(`${d}T${t}`).toISOString()
 }
 
@@ -133,8 +134,8 @@ export function CreateEventOverlayTrigger({
       return
     }
 
-    const startISO = combineLocalDateTimeToISO(date, startTime)
-    const endISO = combineLocalDateTimeToISO(date, endTime)
+    const startISO = combineLocalDateTime(date, startTime)
+    const endISO = combineLocalDateTime(date, endTime)
 
     const startDate = new Date(startISO)
     const endDate = new Date(endISO)
@@ -149,7 +150,7 @@ export function CreateEventOverlayTrigger({
       return
     }
 
-    const repeatUntilISO = repeatUntil ? new Date(repeatUntil).toISOString() : null
+    const repeatUntilISO = repeatUntil ? new Date(`${repeatUntil}T00:00`).toISOString() : null
     if (repeat !== "NEVER" && repeatUntilISO) {
       const repeatUntilDate = new Date(repeatUntilISO)
       if (repeatUntilDate <= startDate) {

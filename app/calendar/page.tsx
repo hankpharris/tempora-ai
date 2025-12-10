@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 import { CreateEventOverlayTriggerClient } from "@/components/CreateEventOverlayTriggerClient"
 import { ExpandableEventCard } from "@/components/ExpandableEventCard"
+import { LocalTimeRange } from "@/components/LocalTimeRange"
 import { MovingBlob } from "@/components/MovingBlob"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -405,17 +406,21 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                         >
                           <div className="overflow-hidden">
                             <p className="text-sm font-semibold leading-tight truncate">{item.event.name}</p>
-                            <p className="text-[11px] font-normal text-default-600 leading-snug truncate">
-                              {formatTimeRange(item.event)}
-                            </p>
+                            <LocalTimeRange
+                              start={item.event.start}
+                              end={item.event.end}
+                              className="text-[11px] font-normal text-default-600 leading-snug truncate"
+                            />
                           </div>
                           <div className="pointer-events-none absolute inset-0 rounded-xl ring-primary/0 transition group-hover:ring-2 group-focus-visible:ring-2" />
                           <div className="absolute left-1/2 top-full z-30 mt-2 hidden w-max max-w-[420px] -translate-x-1/2 rounded-xl border border-default/20 bg-content1/95 px-4 py-3 text-xs text-foreground shadow-lg backdrop-blur-md group-hover:flex group-focus-visible:flex">
                             <div className="flex flex-col gap-1">
                               <span className="text-sm font-semibold leading-snug">{item.event.name}</span>
-                              <span className="text-[11px] font-normal text-default-600 leading-tight">
-                                {formatTimeRange(item.event)}
-                              </span>
+                              <LocalTimeRange
+                                start={item.event.start}
+                                end={item.event.end}
+                                className="text-[11px] font-normal text-default-600 leading-tight"
+                              />
                             </div>
                           </div>
                         </div>
