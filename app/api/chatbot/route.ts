@@ -5,7 +5,6 @@ import { z } from "zod"
 import { env } from "@/env.mjs"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { fromZonedTime } from "date-fns-tz"
 
 const imageContentPartSchema = z.object({
   type: z.literal("image_url"),
@@ -46,8 +45,8 @@ const requestSchema = z.object({
 
 const isoDateSchema = z
   .string()
-  .datetime({ offset: true })
-  .describe("ISO-8601 timestamp. Can be UTC (ending in Z) or have an offset (e.g. -05:00). Preference is to use the user's local time with offset.")
+  .datetime()
+  .describe("ISO-8601 timestamp, for example 2024-11-18T13:30:00Z")
 
 const timeSlotInputSchema = z.object({
   start: isoDateSchema.describe("When this time slot starts"),
@@ -104,9 +103,7 @@ Rules:
 - Do not attempt to clarify facts already known with relative certainty. 
     - For example if you check a users schedule list, and they only have one, you can assume this is what they are referring to when they ask about their schedule with reasonable certainty.
 - You can interact with friends' schedules if they are confirmed friends. Use 'list_friends' to find friends and 'get_friend_schedules' to see their calendars.
-- IMPORTANT: When calling tools with time parameters (start, end, from, to), use the user's local time with their timezone offset (e.g. "2023-10-27T14:00:00-05:00") instead of converting to UTC yourself. The system will handle the conversion.
-    - Example: User says "2pm" and their offset is -05:00 -> You pass "2023-10-27T14:00:00-05:00".
-    - Do NOT calculate UTC yourself (e.g. do NOT pass "19:00:00-05:00").
+- Work in ISO-8601 timestamps (UTC) internally but present times to the user in their local timezone when possible.
 - Keep explanations short. Finish with an actionable summary of what you did or still need.
 
 You are configured on gpt-5-mini with tool access.`
@@ -487,14 +484,6 @@ export async function POST(req: Request) {
         repeated?: string
         repeatUntil?: string
       }) => {
-        console.log("[createEventTool] Received arguments:", JSON.stringify({
-          scheduleId,
-          name,
-          timeSlots,
-          repeated,
-          repeatUntil
-        }, null, 2))
-
         const schedule = await ensureScheduleOwnership(scheduleId, userId)
         const repeatUntilDate = repeatUntil ? parseIsoDate(repeatUntil, "repeatUntil") : null
 
@@ -850,22 +839,11 @@ async function ensureEventOwnership(eventId: string, userId: string) {
 }
 
 function parseIsoDate(value: string, label: string) {
-  try {
-    console.log(`[parseIsoDate] Parsing ${label}: "${value}"`)
-    // If it has a timezone offset (e.g. -05:00) or is UTC (Z), Date constructor handles it correctly
-    // It converts to the system's local time, but getTime() returns correct UTC milliseconds
-    const parsed = new Date(value)
-    console.log(`[parseIsoDate] Parsed result for ${label}:`, parsed.toISOString())
-    
-    if (Number.isNaN(parsed.getTime())) {
-      throw new Error(`Invalid ${label}. Use an ISO-8601 timestamp.`)
-    }
-    
-    return parsed
-  } catch (error) {
-     console.error(`[parseIsoDate] Error parsing ${label}: "${value}"`, error)
-     throw new Error(`Invalid ${label}. Use an ISO-8601 timestamp.`)
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Invalid ${label}. Use an ISO-8601 timestamp.`)
   }
+  return parsed
 }
 
 function serializeEvent(event: { 
