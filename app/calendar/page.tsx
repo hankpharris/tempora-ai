@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 import { redirect } from "next/navigation"
 import { CreateEventOverlayTriggerClient } from "@/components/CreateEventOverlayTriggerClient"
 import { ExpandableEventCard } from "@/components/ExpandableEventCard"
@@ -26,7 +27,7 @@ const SECTION_SNAP_CLASS =
   "snap-start min-h-screen px-4 py-10 md:px-8 lg:px-12 flex items-stretch"
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
-const MONTH_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" })
+const MONTH_NAME_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "long" })
 const DAY_NUMBER_FORMATTER = new Intl.DateTimeFormat("en-US", { day: "numeric" })
 const DAY_DETAIL_FORMATTER = new Intl.DateTimeFormat("en-US", {
   weekday: "long",
@@ -128,7 +129,11 @@ const COLOR_STYLES: Record<
   },
 }
 
-export default async function CalendarPage() {
+export default async function CalendarPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ month?: string }>
+}) {
   const session = await auth()
 
   if (!session?.user?.id) {
@@ -164,16 +169,21 @@ export default async function CalendarPage() {
     }))
   })
 
+  const resolvedSearchParams = (await searchParams) ?? {}
   const today = new Date()
+  const viewMonth = parseMonthParam(resolvedSearchParams.month) ?? new Date(today.getFullYear(), today.getMonth(), 1)
+  const prevMonth = addMonths(viewMonth, -1)
+  const nextMonth = addMonths(viewMonth, 1)
 
   // Expand repeating events into individual occurrences (one per time slot per repetition)
 const normalizedEvents = expandRepeatingEvents(baseEvents, today).sort(
   (a, b) => a.start.getTime() - b.start.getTime()
 )
-const monthLabel = MONTH_FORMATTER.format(today)
+const monthLabel = MONTH_NAME_FORMATTER.format(viewMonth)
+const viewYear = viewMonth.getFullYear()
 const eventsByDate = groupEventsByDate(normalizedEvents)
-const monthMatrix = buildMonthMatrix(today, eventsByDate)
-const weekDays = buildWeekDays(today, eventsByDate)
+const monthMatrix = buildMonthMatrix(viewMonth, eventsByDate, today)
+const weekDays = buildWeekDays(viewMonth, eventsByDate, today)
 const weekRangeLabel = formatWeekRangeLabel(weekDays)
 const focusedDay = resolveFocusedDay(weekDays)
 const dayEvents = focusedDay?.events ?? []
@@ -210,9 +220,27 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
             <div className="grid flex-1 min-h-0 grid-cols-1 gap-6 px-2 lg:grid-cols-[3fr,1.1fr] lg:px-0">
               <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-default/20 bg-content1/80 shadow-2xl px-3 lg:px-4 dark:border-default/25 dark:bg-content1/60">
                 <div className="flex flex-wrap items-center justify-between gap-4 border-b border-default/15 px-6 py-4">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.35em] text-default-500">Month</p>
-                    <h2 className="text-2xl font-semibold text-foreground">{monthLabel}</h2>
+                  <div className="flex items-center gap-3 text-default-500">
+                    <div className="flex w-8 shrink-0 flex-col items-center gap-1">
+                      <Link
+                        href={`/calendar?month=${formatMonthParam(prevMonth)}`}
+                        className="inline-flex h-7 w-7 items-center justify-center text-sm font-semibold text-default-600 hover:text-primary"
+                        aria-label="Previous month"
+                      >
+                        ↑
+                      </Link>
+                      <Link
+                        href={`/calendar?month=${formatMonthParam(nextMonth)}`}
+                        className="inline-flex h-7 w-7 items-center justify-center text-sm font-semibold text-default-600 hover:text-primary"
+                        aria-label="Next month"
+                      >
+                        ↓
+                      </Link>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl font-semibold text-default-600">{viewYear}</span>
+                      <h2 className="text-2xl font-semibold text-foreground">{monthLabel}</h2>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3 text-sm text-default-500">
                     <span className="hidden rounded-full border border-default/20 bg-default-100/60 px-3 py-1 dark:border-default/30 dark:bg-default-100/10 sm:inline-flex">
@@ -510,6 +538,12 @@ function addDays(date: Date, amount: number) {
   return clone
 }
 
+function addMonths(date: Date, amount: number) {
+  const clone = new Date(date)
+  clone.setMonth(clone.getMonth() + amount)
+  return clone
+}
+
 function isSameDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -546,7 +580,7 @@ function groupEventsByDate(events: NormalizedEvent[]) {
   return map
 }
 
-function buildMonthMatrix(anchor: Date, eventsByDate: Map<string, NormalizedEvent[]>) {
+function buildMonthMatrix(anchor: Date, eventsByDate: Map<string, NormalizedEvent[]>, today: Date) {
   const startOfMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
   const endOfMonth = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0)
   const leading = startOfMonth.getDay()
@@ -567,7 +601,7 @@ function buildMonthMatrix(anchor: Date, eventsByDate: Map<string, NormalizedEven
         key,
         events: eventsByDate.get(key) ?? [],
         isCurrentMonth: current.getMonth() === anchor.getMonth(),
-        isToday: isSameDay(current, anchor),
+        isToday: isSameDay(current, today),
       })
     }
     weeks.push(week)
@@ -576,7 +610,7 @@ function buildMonthMatrix(anchor: Date, eventsByDate: Map<string, NormalizedEven
   return weeks
 }
 
-function buildWeekDays(anchor: Date, eventsByDate: Map<string, NormalizedEvent[]>) {
+function buildWeekDays(anchor: Date, eventsByDate: Map<string, NormalizedEvent[]>, today: Date) {
   const weekStart = addDays(startOfDay(anchor), -anchor.getDay())
   const columns: WeekDayColumn[] = []
   for (let index = 0; index < 7; index++) {
@@ -587,7 +621,7 @@ function buildWeekDays(anchor: Date, eventsByDate: Map<string, NormalizedEvent[]
       key,
       events: eventsByDate.get(key) ?? [],
       isCurrentMonth: date.getMonth() === anchor.getMonth(),
-      isToday: isSameDay(date, anchor),
+      isToday: isSameDay(date, today),
       weekdayLabel: WEEKDAY_LONG_FORMATTER.format(date),
       monthDayLabel: WEEKDAY_SHORT_FORMATTER.format(date),
     })
@@ -612,6 +646,21 @@ function resolveFocusedDay(weekDays: WeekDayColumn[]) {
 
 function formatTimeRange(event: NormalizedEvent) {
   return `${TIME_FORMATTER.format(event.start)} – ${TIME_FORMATTER.format(event.end)}`
+}
+
+function parseMonthParam(value?: string) {
+  if (!value) return null
+  const [yearStr, monthStr] = value.split("-")
+  const year = Number(yearStr)
+  const month = Number(monthStr)
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null
+  return new Date(year, month - 1, 1)
+}
+
+function formatMonthParam(date: Date) {
+  const y = date.getFullYear()
+  const m = `${date.getMonth() + 1}`.padStart(2, "0")
+  return `${y}-${m}`
 }
 
 function getRelativeLabel(target: Date, today: Date) {
