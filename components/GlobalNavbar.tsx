@@ -2,21 +2,24 @@
 
 import { Button, cn } from "@heroui/react"
 import Link from "next/link"
+import { useSession } from "next-auth/react"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 
 import { ThemeToggle } from "@/components/ThemeToggle"
 
-const links = [
+const baseLinks = [
   { href: "/", label: "Overview" },
   { href: "/calendar", label: "Calendar" },
-  { href: "/admin", label: "Admin" },
 ]
 
 export function GlobalNavbar() {
+  const { data: session } = useSession()
   const pathname = usePathname()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
 
+  const isAdmin = session?.user?.type === "ADMIN"
+  const links = isAdmin ? [...baseLinks, { href: "/admin", label: "Admin" }] : baseLinks
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href))
 
   return (
