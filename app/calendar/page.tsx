@@ -20,7 +20,7 @@ const WEEKDAY_HEADER = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const COLOR_TOKENS = ["primary", "secondary", "success", "warning", "danger"] as const
 const DAY_MS = 86_400_000
 const MINUTES_IN_DAY = 1_440
-const MIN_TIMELINE_BLOCK_MINUTES = 45
+const MIN_TIMELINE_BLOCK_MINUTES = 15
 const HOUR_HEIGHT = 48
 const WEEK_HEADER_HEIGHT = 40
 const TOTAL_DAY_HEIGHT = WEEK_HEADER_HEIGHT + HOUR_HEIGHT * 24
@@ -153,7 +153,7 @@ const COLOR_STYLES: Record<
 export default async function CalendarPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ month?: string }>
+  searchParams?: Promise<{ month?: string; week?: string }>
 }) {
   const session = await auth()
 
@@ -405,23 +405,26 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                       ))}
                     </div>
                     <div className="absolute left-0 right-0 top-[40px] h-[calc(100%-40px)] px-2 pb-4">
-                      {day.events.map((event, idx) => {
-                        const styles = COLOR_STYLES[event.colorToken]
-                        const dayStart = startOfDay(day.date)
-                        const rawStart = (event.start.getTime() - dayStart.getTime()) / 60000
-                        const rawEnd = (event.end.getTime() - dayStart.getTime()) / 60000
-                        const startMinutes = Math.max(0, Math.min(MINUTES_IN_DAY, rawStart))
-                        const durationMinutes = Math.max(rawEnd - rawStart, MIN_TIMELINE_BLOCK_MINUTES)
-                        const endMinutes = Math.min(MINUTES_IN_DAY, startMinutes + durationMinutes)
-                        const topPx = (startMinutes / 60) * HOUR_HEIGHT
-                        const heightPx = ((endMinutes - startMinutes) / 60) * HOUR_HEIGHT
+                      {buildWeekColumnLanes(day.events, day.date).map((item, idx) => {
+                        const styles = COLOR_STYLES[item.event.colorToken]
+                        const topPx = (item.startMin / 60) * HOUR_HEIGHT
+                        const heightPx = Math.max(
+                          ((item.endMin - item.startMin) / 60) * HOUR_HEIGHT,
+                          12
+                        )
+                        const laneWidthPct = 100 / item.totalLanes
+                        const gapPx = 4
+                        const leftCalc = `calc(${laneWidthPct * item.lane}% + ${gapPx * item.lane}px)`
+                        const widthCalc = `calc(${laneWidthPct}% - ${
+                          (gapPx * (item.totalLanes - 1)) / item.totalLanes
+                        }px)`
                         return (
                           <div
-                            key={`${event.id}-${idx}`}
-                            className={`absolute left-1 right-1 overflow-hidden rounded-lg border px-3 py-2 text-xs font-semibold shadow ${styles.border} ${styles.surface} ${styles.text}`}
-                            style={{ top: topPx, height: heightPx }}
+                            key={`${item.event.id}-${idx}`}
+                            className={`absolute overflow-hidden rounded-lg border px-3 py-2 text-xs font-semibold shadow ${styles.border} ${styles.surface} ${styles.text}`}
+                            style={{ top: topPx, height: heightPx, left: leftCalc, width: widthCalc }}
                           >
-                            <p className="text-sm font-semibold leading-tight truncate">{event.name}</p>
+                            <p className="text-sm font-semibold leading-tight truncate">{item.event.name}</p>
                           </div>
                         )
                       })}
@@ -774,6 +777,59 @@ function buildTimelineLanes(events: NormalizedEvent[], referenceDay: Date) {
 
     return { ...item, lane }
   })
+}
+
+function buildWeekColumnLanes(events: NormalizedEvent[], referenceDay: Date) {
+  const dayStart = startOfDay(referenceDay).getTime()
+  const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
+  const sorted = events
+    .map((event) => {
+      const startMin = clamp((event.start.getTime() - dayStart) / 60_000, 0, MINUTES_IN_DAY)
+      const rawEnd = clamp((event.end.getTime() - dayStart) / 60_000, 0, MINUTES_IN_DAY)
+      const endMin = Math.max(rawEnd, startMin + MIN_TIMELINE_BLOCK_MINUTES)
+      return { event, startMin, endMin }
+    })
+    .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin)
+
+  const placements: Array<{ event: NormalizedEvent; startMin: number; endMin: number; lane: number; totalLanes: number }> = []
+  let lanes: number[] = []
+  let clusterStartIndex = 0
+  let clusterMaxLanes = 0
+  let activeEnds: number[] = []
+
+  const flushCluster = () => {
+    for (let i = clusterStartIndex; i < placements.length; i++) {
+      placements[i].totalLanes = clusterMaxLanes || 1
+    }
+  }
+
+  sorted.forEach((item) => {
+    activeEnds = activeEnds.filter((end) => end > item.startMin)
+    if (activeEnds.length === 0 && placements.length > clusterStartIndex) {
+      flushCluster()
+      // reset for next cluster
+      clusterStartIndex = placements.length
+      lanes = []
+      clusterMaxLanes = 0
+    }
+
+    let lane = 0
+    for (; lane < lanes.length; lane++) {
+      const laneEnd = lanes[lane] ?? -Infinity
+      if (item.startMin >= laneEnd - 0.5) break
+    }
+    if (lane === lanes.length) {
+      lanes.push(item.endMin)
+    } else {
+      lanes[lane] = item.endMin
+    }
+    clusterMaxLanes = Math.max(clusterMaxLanes, lanes.length)
+    activeEnds.push(item.endMin)
+    placements.push({ ...item, lane, totalLanes: 0 })
+  })
+
+  flushCluster()
+  return placements
 }
 
 /**
