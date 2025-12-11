@@ -18,6 +18,7 @@ export function GlobalNavbar() {
   const pathname = usePathname()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const isAuthenticated = Boolean(session?.user)
+  const isLoginPage = pathname === "/login"
 
   const isAdmin = session?.user?.type === "ADMIN"
   const links = isAdmin ? [...baseLinks, { href: "/admin", label: "Admin" }] : baseLinks
@@ -81,21 +82,23 @@ export function GlobalNavbar() {
               <span>Log out</span>
             </button>
           ) : (
-            <Link
-              href="/login"
-              className="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-foreground shadow-sm shadow-primary/10 transition hover:border-primary/50 hover:bg-primary/20"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
-                <path
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="1.6"
-                  d="M9 7l-5 5 5 5M20 12H4M20 5h-5M20 19h-5"
-                />
-              </svg>
-              <span>Log in</span>
-            </Link>
+            !isLoginPage && (
+              <Link
+                href="/login"
+                className="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-foreground shadow-sm shadow-primary/10 transition hover:border-primary/50 hover:bg-primary/20"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <path
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.6"
+                    d="M9 7l-5 5 5 5M20 12H4M20 5h-5M20 19h-5"
+                  />
+                </svg>
+                <span>Log in</span>
+              </Link>
+            )
           )}
           <ThemeToggle />
           <button
@@ -147,13 +150,15 @@ export function GlobalNavbar() {
                   <span>Log out</span>
                 </button>
               ) : (
-                <Link
-                  href="/login"
-                  onClick={() => setIsMenuOpen(false)}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-foreground shadow-sm shadow-primary/10 transition hover:border-primary/50 hover:bg-primary/20"
-                >
-                  <span>Log in</span>
-                </Link>
+                !isLoginPage && (
+                  <Link
+                    href="/login"
+                    onClick={() => setIsMenuOpen(false)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-foreground shadow-sm shadow-primary/10 transition hover:border-primary/50 hover:bg-primary/20"
+                  >
+                    <span>Log in</span>
+                  </Link>
+                )
               )}
             </div>
           </nav>
