@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation"
 import { useState } from "react"
 
 import { ThemeToggle } from "@/components/ThemeToggle"
+import { LogoutButton } from "@/components/LogoutButton"
 
 const baseLinks = [
   { href: "/", label: "Overview" },
@@ -61,6 +62,20 @@ export function GlobalNavbar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          {session?.user && (
+            <div className="mr-2 hidden items-center gap-2 text-sm md:flex">
+              <span className="text-default-500">Logged in as</span>
+              <span className="font-medium text-foreground">
+                {[session.user.fname, session.user.lname].filter(Boolean).join(" ") || session.user.email}
+              </span>
+              {isAdmin && (
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary ring-1 ring-inset ring-primary/20">
+                  Admin
+                </span>
+              )}
+              <LogoutButton />
+            </div>
+          )}
           <ThemeToggle />
           <button
             type="button"
@@ -98,6 +113,25 @@ export function GlobalNavbar() {
                 <span className="h-2 w-2 rounded-full bg-primary/50" />
               </Link>
             ))}
+            
+            {session?.user && (
+              <div className="mt-2 flex items-center justify-between border-t border-primary/10 px-3 py-2 pt-4">
+                <div className="flex flex-col">
+                  <span className="text-xs text-default-500">Logged in as</span>
+                  <span className="text-sm font-semibold text-foreground">
+                    {[session.user.fname, session.user.lname].filter(Boolean).join(" ") || session.user.email}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isAdmin && (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary ring-1 ring-inset ring-primary/20">
+                      Admin
+                    </span>
+                  )}
+                  <LogoutButton />
+                </div>
+              </div>
+            )}
           </nav>
         </div>
       )}
