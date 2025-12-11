@@ -1,8 +1,10 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 import { redirect } from "next/navigation"
 import { CreateEventOverlayTriggerClient } from "@/components/CreateEventOverlayTriggerClient"
 import { ExpandableEventCard } from "@/components/ExpandableEventCard"
 import { LocalTimeRange } from "@/components/LocalTimeRange"
+import { MonthDayCell } from "@/components/MonthDayCell"
 import { MovingBlob } from "@/components/MovingBlob"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -18,15 +20,17 @@ const WEEKDAY_HEADER = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 const COLOR_TOKENS = ["primary", "secondary", "success", "warning", "danger"] as const
 const DAY_MS = 86_400_000
 const MINUTES_IN_DAY = 1_440
-const MIN_TIMELINE_BLOCK_MINUTES = 45
+const MIN_TIMELINE_BLOCK_MINUTES = 15
 const HOUR_HEIGHT = 48
 const WEEK_HEADER_HEIGHT = 40
 const TOTAL_DAY_HEIGHT = WEEK_HEADER_HEIGHT + HOUR_HEIGHT * 24
 const SECTION_SNAP_CLASS =
   "snap-start min-h-screen px-4 py-10 md:px-8 lg:px-12 flex items-stretch"
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
+const DB_RETRY_ATTEMPTS = 3
+const DB_RETRY_DELAY_MS = 300
 
-const MONTH_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" })
+const MONTH_NAME_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "long" })
 const DAY_NUMBER_FORMATTER = new Intl.DateTimeFormat("en-US", { day: "numeric" })
 const DAY_DETAIL_FORMATTER = new Intl.DateTimeFormat("en-US", {
   weekday: "long",
@@ -41,6 +45,24 @@ const WEEKDAY_SHORT_FORMATTER = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 })
 const TIME_FORMATTER = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" })
+
+// Minimal retry guard so transient pool/network hiccups don't crash the page outright.
+async function withDbRetry<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < DB_RETRY_ATTEMPTS; attempt++) {
+    try {
+      await prisma.$connect()
+      return await operation()
+    } catch (error) {
+      lastError = error
+      if (attempt < DB_RETRY_ATTEMPTS - 1) {
+        await new Promise((resolve) => setTimeout(resolve, DB_RETRY_DELAY_MS * (attempt + 1)))
+      }
+    }
+  }
+  console.error("Database unavailable after retries", lastError)
+  throw new Error("Unable to reach the database. Please try again shortly.")
+}
 
 type ColorToken = (typeof COLOR_TOKENS)[number]
 
@@ -128,22 +150,28 @@ const COLOR_STYLES: Record<
   },
 }
 
-export default async function CalendarPage() {
+export default async function CalendarPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ month?: string; week?: string }>
+}) {
   const session = await auth()
 
   if (!session?.user?.id) {
     redirect("/login")
   }
 
-  const schedules = await prisma.schedule.findMany({
-    where: { userId: session.user.id },
-    include: {
-      events: {
-        orderBy: { start: "asc" },
+  const schedules = await withDbRetry(() =>
+    prisma.schedule.findMany({
+      where: { userId: session.user.id },
+      include: {
+        events: {
+          orderBy: { start: "asc" },
+        },
       },
-    },
-    orderBy: { createdAt: "asc" },
-  })
+      orderBy: { createdAt: "asc" },
+    })
+  )
 
   const assignColor = createScheduleColorAssigner()
 
@@ -164,16 +192,25 @@ export default async function CalendarPage() {
     }))
   })
 
+  const resolvedSearchParams = (await searchParams) ?? {}
   const today = new Date()
+  const viewMonth = parseMonthParam(resolvedSearchParams.month) ?? new Date(today.getFullYear(), today.getMonth(), 1)
+  const prevMonth = addMonths(viewMonth, -1)
+  const nextMonth = addMonths(viewMonth, 1)
+  const weekAnchor = parseWeekParam(resolvedSearchParams.week) ?? today
+  const prevWeek = addWeeks(weekAnchor, -1)
+  const nextWeek = addWeeks(weekAnchor, 1)
 
   // Expand repeating events into individual occurrences (one per time slot per repetition)
 const normalizedEvents = expandRepeatingEvents(baseEvents, today).sort(
   (a, b) => a.start.getTime() - b.start.getTime()
 )
-const monthLabel = MONTH_FORMATTER.format(today)
+const monthLabel = MONTH_NAME_FORMATTER.format(viewMonth)
+const viewYear = viewMonth.getFullYear()
+const todayWeekParam = formatWeekParam(today)
 const eventsByDate = groupEventsByDate(normalizedEvents)
-const monthMatrix = buildMonthMatrix(today, eventsByDate)
-const weekDays = buildWeekDays(today, eventsByDate)
+const monthMatrix = buildMonthMatrix(viewMonth, eventsByDate, today)
+const weekDays = buildWeekDays(weekAnchor, eventsByDate, today)
 const weekRangeLabel = formatWeekRangeLabel(weekDays)
 const focusedDay = resolveFocusedDay(weekDays)
 const dayEvents = focusedDay?.events ?? []
@@ -210,14 +247,40 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
             <div className="grid flex-1 min-h-0 grid-cols-1 gap-6 px-2 lg:grid-cols-[3fr,1.1fr] lg:px-0">
               <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-default/20 bg-content1/80 shadow-2xl px-3 lg:px-4 dark:border-default/25 dark:bg-content1/60">
                 <div className="flex flex-wrap items-center justify-between gap-4 border-b border-default/15 px-6 py-4">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.35em] text-default-500">Month</p>
-                    <h2 className="text-2xl font-semibold text-foreground">{monthLabel}</h2>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm text-default-500">
-                    <span className="hidden rounded-full border border-default/20 bg-default-100/60 px-3 py-1 dark:border-default/30 dark:bg-default-100/10 sm:inline-flex">
-                      {highlightedEvent ? `Next: ${highlightedEvent.name}` : "No upcoming events"}
-                    </span>
+                  <div className="flex items-center gap-3 text-default-500">
+                    <div className="flex w-8 shrink-0 flex-col items-center gap-1">
+                      <Link
+                        href={`/calendar?month=${formatMonthParam(prevMonth)}`}
+                        className="inline-flex h-7 w-7 items-center justify-center text-sm font-semibold text-default-600 hover:text-primary"
+                        aria-label="Previous month"
+                  >
+                    ↑
+                  </Link>
+                  <Link
+                    href={`/calendar?month=${formatMonthParam(nextMonth)}`}
+                        className="inline-flex h-7 w-7 items-center justify-center text-sm font-semibold text-default-600 hover:text-primary"
+                        aria-label="Next month"
+                      >
+                        ↓
+                  </Link>
+                </div>
+                <Link
+                  href={`/calendar?month=${formatMonthParam(today)}`}
+                  className="group flex items-baseline gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  aria-label="Jump to current month"
+                >
+                  <span className="text-2xl font-semibold text-default-600 group-hover:text-primary transition-colors">
+                    {viewYear}
+                  </span>
+                  <h2 className="text-2xl font-semibold text-foreground group-hover:text-primary transition-colors">
+                    {monthLabel}
+                  </h2>
+                </Link>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-default-500">
+                <span className="hidden rounded-full border border-default/20 bg-default-100/60 px-3 py-1 dark:border-default/30 dark:bg-default-100/10 sm:inline-flex">
+                  {highlightedEvent ? `Next: ${highlightedEvent.name}` : "No upcoming events"}
+                </span>
                     <CreateEventOverlayTriggerClient
                       triggerClassName="inline-flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary/90 hover:border-primary/60 hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                       triggerLabel="Create event"
@@ -235,7 +298,13 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                       ))}
                     </div>
                     <div className="grid grid-cols-7 gap-3 px-4 pb-6 pt-4 auto-rows-[minmax(9rem,_auto)]">
-                      {monthMatrix.flat().map((day) => (
+                      {monthMatrix.flat().map((day) => {
+                        const styledEvents = day.events.map((event) => ({
+                          ...event,
+                          timeRange: formatTimeRange(event),
+                          styles: COLOR_STYLES[event.colorToken],
+                        }))
+                        return (
                         <div
                           key={day.key}
                           className={`rounded-xl border p-3 transition-colors ${
@@ -252,38 +321,10 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                               </span>
                             )}
                           </div>
-                          <div className="mt-3 space-y-2">
-                            {day.events.length === 0 ? (
-                              <p className="text-xs text-default-500">No events</p>
-                            ) : (
-                              <>
-                                {day.events.slice(0, 3).map((event) => {
-                                  const styles = COLOR_STYLES[event.colorToken]
-                                  return (
-                                    <ExpandableEventCard
-                                      key={`${day.key}-${event.id}`}
-                                      eventId={event.baseEventId}
-                                      slotIndex={event.slotIndex}
-                                      eventStart={event.start}
-                                      eventEnd={event.end}
-                                      repeated={event.repeated}
-                                      repeatUntil={event.repeatUntil}
-                                      name={event.name}
-                                      description={event.description}
-                                      timeRange={formatTimeRange(event)}
-                                      styles={styles}
-                                      variant="compact"
-                                    />
-                                  )
-                                })}
-                                {day.events.length > 3 && (
-                                  <p className="text-[11px] text-default-500">+{day.events.length - 3} more</p>
-                                )}
-                              </>
-                            )}
-                          </div>
+                          <MonthDayCell events={styledEvents} />
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -298,10 +339,33 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
         <section className={SECTION_SNAP_CLASS}>
           <div className="mx-auto flex h-full w-full max-w-[1600px] flex-col gap-6">
             <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.35em] text-default-500">Weekly focus</p>
-                <h2 className="text-2xl font-semibold text-foreground">{weekRangeLabel}</h2>
-                <p className="text-sm text-default-500">Hour-by-hour view across the next seven days.</p>
+              <div className="flex items-center gap-3 text-default-500">
+                <div className="flex w-8 shrink-0 flex-col items-center gap-1">
+                  <Link
+                    href={`/calendar?month=${formatMonthParam(viewMonth)}&week=${formatWeekParam(prevWeek)}`}
+                    className="inline-flex h-7 w-7 items-center justify-center text-sm font-semibold text-default-600 hover:text-primary"
+                    aria-label="Previous week"
+                  >
+                    ↑
+                  </Link>
+                  <Link
+                    href={`/calendar?month=${formatMonthParam(viewMonth)}&week=${formatWeekParam(nextWeek)}`}
+                    className="inline-flex h-7 w-7 items-center justify-center text-sm font-semibold text-default-600 hover:text-primary"
+                    aria-label="Next week"
+                  >
+                    ↓
+                  </Link>
+                </div>
+                <Link
+                  href={`/calendar?month=${formatMonthParam(today)}&week=${todayWeekParam}`}
+                  className="group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  aria-label="Jump to current week"
+                >
+                  <h2 className="text-2xl font-semibold text-foreground transition-colors group-hover:text-primary">
+                    {weekRangeLabel}
+                  </h2>
+                  <p className="text-sm text-default-500">Weekly Focus</p>
+                </Link>
               </div>
               <div className="rounded-lg border border-default/25 bg-default-100/60 px-4 py-2 text-sm font-semibold text-default-700 dark:border-default/30 dark:bg-default-100/10 dark:text-default-200">
                 {weekEventCount} event{weekEventCount === 1 ? "" : "s"} this week
@@ -332,27 +396,35 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                     </div>
                     <div className="absolute inset-x-0 bottom-0 top-[40px]">
                       {HOURS.map((hour) => (
-                        <div key={hour} className="h-[48px] border-t border-default/10 dark:border-default/20" />
+                        <div
+                          key={hour}
+                          className={`h-[48px] border-t border-default/10 dark:border-default/20 ${
+                            day.isToday ? "bg-primary/5" : ""
+                          }`}
+                        />
                       ))}
                     </div>
                     <div className="absolute left-0 right-0 top-[40px] h-[calc(100%-40px)] px-2 pb-4">
-                      {day.events.map((event, idx) => {
-                        const styles = COLOR_STYLES[event.colorToken]
-                        const dayStart = startOfDay(day.date)
-                        const rawStart = (event.start.getTime() - dayStart.getTime()) / 60000
-                        const rawEnd = (event.end.getTime() - dayStart.getTime()) / 60000
-                        const startMinutes = Math.max(0, Math.min(MINUTES_IN_DAY, rawStart))
-                        const durationMinutes = Math.max(rawEnd - rawStart, MIN_TIMELINE_BLOCK_MINUTES)
-                        const endMinutes = Math.min(MINUTES_IN_DAY, startMinutes + durationMinutes)
-                        const topPx = (startMinutes / 60) * HOUR_HEIGHT
-                        const heightPx = ((endMinutes - startMinutes) / 60) * HOUR_HEIGHT
+                      {buildWeekColumnLanes(day.events, day.date).map((item, idx) => {
+                        const styles = COLOR_STYLES[item.event.colorToken]
+                        const topPx = (item.startMin / 60) * HOUR_HEIGHT
+                        const heightPx = Math.max(
+                          ((item.endMin - item.startMin) / 60) * HOUR_HEIGHT,
+                          12
+                        )
+                        const laneWidthPct = 100 / item.totalLanes
+                        const gapPx = 4
+                        const leftCalc = `calc(${laneWidthPct * item.lane}% + ${gapPx * item.lane}px)`
+                        const widthCalc = `calc(${laneWidthPct}% - ${
+                          (gapPx * (item.totalLanes - 1)) / item.totalLanes
+                        }px)`
                         return (
                           <div
-                            key={`${event.id}-${idx}`}
-                            className={`absolute left-1 right-1 overflow-hidden rounded-lg border px-3 py-2 text-xs font-semibold shadow ${styles.border} ${styles.surface} ${styles.text}`}
-                            style={{ top: topPx, height: heightPx }}
+                            key={`${item.event.id}-${idx}`}
+                            className={`absolute overflow-hidden rounded-lg border px-3 py-2 text-xs font-semibold shadow ${styles.border} ${styles.surface} ${styles.text}`}
+                            style={{ top: topPx, height: heightPx, left: leftCalc, width: widthCalc }}
                           >
-                            <p className="text-sm font-semibold leading-tight truncate">{event.name}</p>
+                            <p className="text-sm font-semibold leading-tight truncate">{item.event.name}</p>
                           </div>
                         )
                       })}
@@ -510,6 +582,16 @@ function addDays(date: Date, amount: number) {
   return clone
 }
 
+function addMonths(date: Date, amount: number) {
+  const clone = new Date(date)
+  clone.setMonth(clone.getMonth() + amount)
+  return clone
+}
+
+function addWeeks(date: Date, amount: number) {
+  return addDays(date, amount * 7)
+}
+
 function isSameDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -546,7 +628,7 @@ function groupEventsByDate(events: NormalizedEvent[]) {
   return map
 }
 
-function buildMonthMatrix(anchor: Date, eventsByDate: Map<string, NormalizedEvent[]>) {
+function buildMonthMatrix(anchor: Date, eventsByDate: Map<string, NormalizedEvent[]>, today: Date) {
   const startOfMonth = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
   const endOfMonth = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0)
   const leading = startOfMonth.getDay()
@@ -567,7 +649,7 @@ function buildMonthMatrix(anchor: Date, eventsByDate: Map<string, NormalizedEven
         key,
         events: eventsByDate.get(key) ?? [],
         isCurrentMonth: current.getMonth() === anchor.getMonth(),
-        isToday: isSameDay(current, anchor),
+        isToday: isSameDay(current, today),
       })
     }
     weeks.push(week)
@@ -576,7 +658,7 @@ function buildMonthMatrix(anchor: Date, eventsByDate: Map<string, NormalizedEven
   return weeks
 }
 
-function buildWeekDays(anchor: Date, eventsByDate: Map<string, NormalizedEvent[]>) {
+function buildWeekDays(anchor: Date, eventsByDate: Map<string, NormalizedEvent[]>, today: Date) {
   const weekStart = addDays(startOfDay(anchor), -anchor.getDay())
   const columns: WeekDayColumn[] = []
   for (let index = 0; index < 7; index++) {
@@ -587,7 +669,7 @@ function buildWeekDays(anchor: Date, eventsByDate: Map<string, NormalizedEvent[]
       key,
       events: eventsByDate.get(key) ?? [],
       isCurrentMonth: date.getMonth() === anchor.getMonth(),
-      isToday: isSameDay(date, anchor),
+      isToday: isSameDay(date, today),
       weekdayLabel: WEEKDAY_LONG_FORMATTER.format(date),
       monthDayLabel: WEEKDAY_SHORT_FORMATTER.format(date),
     })
@@ -612,6 +694,38 @@ function resolveFocusedDay(weekDays: WeekDayColumn[]) {
 
 function formatTimeRange(event: NormalizedEvent) {
   return `${TIME_FORMATTER.format(event.start)} – ${TIME_FORMATTER.format(event.end)}`
+}
+
+function parseMonthParam(value?: string) {
+  if (!value) return null
+  const [yearStr, monthStr] = value.split("-")
+  const year = Number(yearStr)
+  const month = Number(monthStr)
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return null
+  return new Date(year, month - 1, 1)
+}
+
+function formatMonthParam(date: Date) {
+  const y = date.getFullYear()
+  const m = `${date.getMonth() + 1}`.padStart(2, "0")
+  return `${y}-${m}`
+}
+
+function formatWeekParam(date: Date) {
+  const y = date.getFullYear()
+  const m = `${date.getMonth() + 1}`.padStart(2, "0")
+  const d = `${date.getDate()}`.padStart(2, "0")
+  return `${y}-${m}-${d}`
+}
+
+function parseWeekParam(value?: string) {
+  if (!value) return null
+  const [yearStr, monthStr, dayStr] = value.split("-")
+  const year = Number(yearStr)
+  const month = Number(monthStr)
+  const day = Number(dayStr)
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
+  return new Date(year, month - 1, day)
 }
 
 function getRelativeLabel(target: Date, today: Date) {
@@ -663,6 +777,62 @@ function buildTimelineLanes(events: NormalizedEvent[], referenceDay: Date) {
 
     return { ...item, lane }
   })
+}
+
+function buildWeekColumnLanes(events: NormalizedEvent[], referenceDay: Date) {
+  const dayStart = startOfDay(referenceDay).getTime()
+  const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max)
+  const sorted = events
+    .map((event) => {
+      const startMin = clamp((event.start.getTime() - dayStart) / 60_000, 0, MINUTES_IN_DAY)
+      const rawEnd = clamp((event.end.getTime() - dayStart) / 60_000, 0, MINUTES_IN_DAY)
+      const endMin = Math.max(rawEnd, startMin + MIN_TIMELINE_BLOCK_MINUTES)
+      return { event, startMin, endMin }
+    })
+    .sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin)
+
+  const placements: Array<{ event: NormalizedEvent; startMin: number; endMin: number; lane: number; totalLanes: number }> = []
+  let lanes: number[] = []
+  let clusterStartIndex = 0
+  let clusterMaxLanes = 0
+  let activeEnds: number[] = []
+
+  const flushCluster = () => {
+    for (let i = clusterStartIndex; i < placements.length; i++) {
+      const placement = placements[i]
+      if (placement) {
+        placement.totalLanes = clusterMaxLanes || 1
+      }
+    }
+  }
+
+  sorted.forEach((item) => {
+    activeEnds = activeEnds.filter((end) => end > item.startMin)
+    if (activeEnds.length === 0 && placements.length > clusterStartIndex) {
+      flushCluster()
+      // reset for next cluster
+      clusterStartIndex = placements.length
+      lanes = []
+      clusterMaxLanes = 0
+    }
+
+    let lane = 0
+    for (; lane < lanes.length; lane++) {
+      const laneEnd = lanes[lane] ?? -Infinity
+      if (item.startMin >= laneEnd - 0.5) break
+    }
+    if (lane === lanes.length) {
+      lanes.push(item.endMin)
+    } else {
+      lanes[lane] = item.endMin
+    }
+    clusterMaxLanes = Math.max(clusterMaxLanes, lanes.length)
+    activeEnds.push(item.endMin)
+    placements.push({ ...item, lane, totalLanes: 0 })
+  })
+
+  flushCluster()
+  return placements
 }
 
 /**
