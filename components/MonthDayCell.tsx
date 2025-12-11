@@ -25,7 +25,6 @@ export function MonthDayCell({ events }: MonthDayCellProps) {
   const [expanded, setExpanded] = useState(false)
 
   const visible = expanded ? events : events.slice(0, 3)
-  const hiddenCount = Math.max(0, events.length - visible.length)
 
   return (
     <div className="mt-3 space-y-2">

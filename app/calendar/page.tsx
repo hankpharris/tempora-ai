@@ -27,6 +27,8 @@ const TOTAL_DAY_HEIGHT = WEEK_HEADER_HEIGHT + HOUR_HEIGHT * 24
 const SECTION_SNAP_CLASS =
   "snap-start min-h-screen px-4 py-10 md:px-8 lg:px-12 flex items-stretch"
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
+const DB_RETRY_ATTEMPTS = 3
+const DB_RETRY_DELAY_MS = 300
 
 const MONTH_NAME_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "long" })
 const DAY_NUMBER_FORMATTER = new Intl.DateTimeFormat("en-US", { day: "numeric" })
@@ -43,6 +45,24 @@ const WEEKDAY_SHORT_FORMATTER = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 })
 const TIME_FORMATTER = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" })
+
+// Minimal retry guard so transient pool/network hiccups don't crash the page outright.
+async function withDbRetry<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < DB_RETRY_ATTEMPTS; attempt++) {
+    try {
+      await prisma.$connect()
+      return await operation()
+    } catch (error) {
+      lastError = error
+      if (attempt < DB_RETRY_ATTEMPTS - 1) {
+        await new Promise((resolve) => setTimeout(resolve, DB_RETRY_DELAY_MS * (attempt + 1)))
+      }
+    }
+  }
+  console.error("Database unavailable after retries", lastError)
+  throw new Error("Unable to reach the database. Please try again shortly.")
+}
 
 type ColorToken = (typeof COLOR_TOKENS)[number]
 
@@ -141,15 +161,17 @@ export default async function CalendarPage({
     redirect("/login")
   }
 
-  const schedules = await prisma.schedule.findMany({
-    where: { userId: session.user.id },
-    include: {
-      events: {
-        orderBy: { start: "asc" },
+  const schedules = await withDbRetry(() =>
+    prisma.schedule.findMany({
+      where: { userId: session.user.id },
+      include: {
+        events: {
+          orderBy: { start: "asc" },
+        },
       },
-    },
-    orderBy: { createdAt: "asc" },
-  })
+      orderBy: { createdAt: "asc" },
+    })
+  )
 
   const assignColor = createScheduleColorAssigner()
 
@@ -175,6 +197,9 @@ export default async function CalendarPage({
   const viewMonth = parseMonthParam(resolvedSearchParams.month) ?? new Date(today.getFullYear(), today.getMonth(), 1)
   const prevMonth = addMonths(viewMonth, -1)
   const nextMonth = addMonths(viewMonth, 1)
+  const weekAnchor = parseWeekParam(resolvedSearchParams.week) ?? today
+  const prevWeek = addWeeks(weekAnchor, -1)
+  const nextWeek = addWeeks(weekAnchor, 1)
 
   // Expand repeating events into individual occurrences (one per time slot per repetition)
 const normalizedEvents = expandRepeatingEvents(baseEvents, today).sort(
@@ -182,9 +207,9 @@ const normalizedEvents = expandRepeatingEvents(baseEvents, today).sort(
 )
 const monthLabel = MONTH_NAME_FORMATTER.format(viewMonth)
 const viewYear = viewMonth.getFullYear()
+const todayWeekParam = formatWeekParam(today)
 const eventsByDate = groupEventsByDate(normalizedEvents)
 const monthMatrix = buildMonthMatrix(viewMonth, eventsByDate, today)
-const weekAnchor = today
 const weekDays = buildWeekDays(weekAnchor, eventsByDate, today)
 const weekRangeLabel = formatWeekRangeLabel(weekDays)
 const focusedDay = resolveFocusedDay(weekDays)
@@ -228,26 +253,34 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                         href={`/calendar?month=${formatMonthParam(prevMonth)}`}
                         className="inline-flex h-7 w-7 items-center justify-center text-sm font-semibold text-default-600 hover:text-primary"
                         aria-label="Previous month"
-                      >
-                        ↑
-                      </Link>
-                      <Link
-                        href={`/calendar?month=${formatMonthParam(nextMonth)}`}
+                  >
+                    ↑
+                  </Link>
+                  <Link
+                    href={`/calendar?month=${formatMonthParam(nextMonth)}`}
                         className="inline-flex h-7 w-7 items-center justify-center text-sm font-semibold text-default-600 hover:text-primary"
                         aria-label="Next month"
                       >
                         ↓
-                      </Link>
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-semibold text-default-600">{viewYear}</span>
-                      <h2 className="text-2xl font-semibold text-foreground">{monthLabel}</h2>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 text-sm text-default-500">
-                    <span className="hidden rounded-full border border-default/20 bg-default-100/60 px-3 py-1 dark:border-default/30 dark:bg-default-100/10 sm:inline-flex">
-                      {highlightedEvent ? `Next: ${highlightedEvent.name}` : "No upcoming events"}
-                    </span>
+                  </Link>
+                </div>
+                <Link
+                  href={`/calendar?month=${formatMonthParam(today)}`}
+                  className="group flex items-baseline gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  aria-label="Jump to current month"
+                >
+                  <span className="text-2xl font-semibold text-default-600 group-hover:text-primary transition-colors">
+                    {viewYear}
+                  </span>
+                  <h2 className="text-2xl font-semibold text-foreground group-hover:text-primary transition-colors">
+                    {monthLabel}
+                  </h2>
+                </Link>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-default-500">
+                <span className="hidden rounded-full border border-default/20 bg-default-100/60 px-3 py-1 dark:border-default/30 dark:bg-default-100/10 sm:inline-flex">
+                  {highlightedEvent ? `Next: ${highlightedEvent.name}` : "No upcoming events"}
+                </span>
                     <CreateEventOverlayTriggerClient
                       triggerClassName="inline-flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary/90 hover:border-primary/60 hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                       triggerLabel="Create event"
@@ -306,10 +339,33 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
         <section className={SECTION_SNAP_CLASS}>
           <div className="mx-auto flex h-full w-full max-w-[1600px] flex-col gap-6">
             <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.35em] text-default-500">Weekly focus</p>
-                <h2 className="text-2xl font-semibold text-foreground">{weekRangeLabel}</h2>
-                <p className="text-sm text-default-500">Hour-by-hour view across the next seven days.</p>
+              <div className="flex items-center gap-3 text-default-500">
+                <div className="flex w-8 shrink-0 flex-col items-center gap-1">
+                  <Link
+                    href={`/calendar?month=${formatMonthParam(viewMonth)}&week=${formatWeekParam(prevWeek)}`}
+                    className="inline-flex h-7 w-7 items-center justify-center text-sm font-semibold text-default-600 hover:text-primary"
+                    aria-label="Previous week"
+                  >
+                    ↑
+                  </Link>
+                  <Link
+                    href={`/calendar?month=${formatMonthParam(viewMonth)}&week=${formatWeekParam(nextWeek)}`}
+                    className="inline-flex h-7 w-7 items-center justify-center text-sm font-semibold text-default-600 hover:text-primary"
+                    aria-label="Next week"
+                  >
+                    ↓
+                  </Link>
+                </div>
+                <Link
+                  href={`/calendar?month=${formatMonthParam(today)}&week=${todayWeekParam}`}
+                  className="group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  aria-label="Jump to current week"
+                >
+                  <h2 className="text-2xl font-semibold text-foreground transition-colors group-hover:text-primary">
+                    {weekRangeLabel}
+                  </h2>
+                  <p className="text-sm text-default-500">Weekly Focus</p>
+                </Link>
               </div>
               <div className="rounded-lg border border-default/25 bg-default-100/60 px-4 py-2 text-sm font-semibold text-default-700 dark:border-default/30 dark:bg-default-100/10 dark:text-default-200">
                 {weekEventCount} event{weekEventCount === 1 ? "" : "s"} this week
@@ -529,6 +585,10 @@ function addMonths(date: Date, amount: number) {
   return clone
 }
 
+function addWeeks(date: Date, amount: number) {
+  return addDays(date, amount * 7)
+}
+
 function isSameDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -646,6 +706,23 @@ function formatMonthParam(date: Date) {
   const y = date.getFullYear()
   const m = `${date.getMonth() + 1}`.padStart(2, "0")
   return `${y}-${m}`
+}
+
+function formatWeekParam(date: Date) {
+  const y = date.getFullYear()
+  const m = `${date.getMonth() + 1}`.padStart(2, "0")
+  const d = `${date.getDate()}`.padStart(2, "0")
+  return `${y}-${m}-${d}`
+}
+
+function parseWeekParam(value?: string) {
+  if (!value) return null
+  const [yearStr, monthStr, dayStr] = value.split("-")
+  const year = Number(yearStr)
+  const month = Number(monthStr)
+  const day = Number(dayStr)
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
+  return new Date(year, month - 1, day)
 }
 
 function getRelativeLabel(target: Date, today: Date) {
