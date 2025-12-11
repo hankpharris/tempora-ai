@@ -45,6 +45,43 @@ function combineLocalDateTimeToISO(dateStr?: string, timeStr?: string) {
   return new Date(`${d}T${t}`).toISOString()
 }
 
+const WEEKDAY_LABELS: { value: number; label: string }[] = [
+  { value: 0, label: "Sun" },
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+]
+
+function generateRepeatingTimeSlots(
+  repeat: RepeatOption,
+  dateStr: string,
+  startTime: string,
+  endTime: string,
+  weeklyDays: Set<number>,
+) {
+  const baseSlot = { start: combineLocalDateTimeToISO(dateStr, startTime), end: combineLocalDateTimeToISO(dateStr, endTime) }
+  if (repeat !== "WEEKLY") return [baseSlot]
+
+  const [year, month, day] = dateStr.split("-").map(Number)
+  const baseDate = new Date(year, (month || 1) - 1, day || 1)
+  const baseDay = baseDate.getDay()
+  const days = Array.from(weeklyDays.values()).sort((a, b) => a - b)
+  if (days.length === 0) return [baseSlot]
+
+  return days.map((dow) => {
+    const offset = dow - baseDay >= 0 ? dow - baseDay : dow - baseDay + 7
+    const d = new Date(baseDate.getTime() + offset * 86_400_000)
+    const dStr = d.toISOString().slice(0, 10)
+    return {
+      start: combineLocalDateTimeToISO(dStr, startTime),
+      end: combineLocalDateTimeToISO(dStr, endTime),
+    }
+  })
+}
+
 export function ExpandableEventCard({
   name,
   description,
@@ -81,8 +118,13 @@ export function ExpandableEventCard({
     return {
       start: splitLocalInputValue(toLocalInputValue(start)),
       end: splitLocalInputValue(toLocalInputValue(end)),
+      startDate: start,
+      endDate: end,
     }
   }, [startValue, endValue])
+  const [editWeeklyDays, setEditWeeklyDays] = useState<Set<number>>(
+    new Set([defaultDateTimes.startDate.getDay()]),
+  )
   const [editDate, setEditDate] = useState(defaultDateTimes.start.date)
   const [editStartTime, setEditStartTime] = useState(defaultDateTimes.start.time)
   const [editEndTime, setEditEndTime] = useState(defaultDateTimes.end.time)
@@ -135,6 +177,7 @@ export function ExpandableEventCard({
     setEditDate(defaultDateTimes.start.date)
     setEditStartTime(defaultDateTimes.start.time)
     setEditEndTime(defaultDateTimes.end.time)
+    setEditWeeklyDays(new Set([defaultDateTimes.startDate.getDay()]))
     setEditRepeatUntil(repeatUntil ? repeatUntil.toISOString().slice(0, 10) : "")
     setEditRepeat((repeated as RepeatOption | undefined) ?? "NEVER")
     updatePopoverPosition()
@@ -173,15 +216,23 @@ export function ExpandableEventCard({
       return
     }
 
-    const repeatUntilISO =
-      editRepeat !== "NEVER" && editRepeatUntil ? new Date(`${editRepeatUntil}T00:00`).toISOString() : null
-    if (repeatUntilISO && new Date(repeatUntilISO) <= startDate) {
-      setEditError("Repeat-until must be after the first time slot")
-      return
-    }
-
     try {
       setIsSaving(true)
+      const timeSlots = generateRepeatingTimeSlots(editRepeat, editDate, editStartTime, editEndTime, editWeeklyDays)
+      const repeatUntilISO =
+        editRepeat !== "NEVER" && editRepeatUntil ? new Date(`${editRepeatUntil}T00:00`).toISOString() : null
+      if (repeatUntilISO) {
+        const repeatUntilDate = new Date(repeatUntilISO)
+        const earliestSlot = timeSlots.reduce((min, slot) => {
+          const dt = new Date(slot.start)
+          return dt < min ? dt : min
+        }, startDate)
+        if (repeatUntilDate <= earliestSlot) {
+          setEditError("Repeat-until must be after the first time slot")
+          setIsSaving(false)
+          return
+        }
+      }
       const payload: {
         name: string
         description: string | null
@@ -192,10 +243,13 @@ export function ExpandableEventCard({
       } = {
         name: editName.trim(),
         description: editDescription.trim() || null,
-        timeSlots: [{ start: startISO, end: endISO }],
+        timeSlots,
         slotIndex: slotIndex ?? 0,
         repeated: editRepeat,
-        repeatUntil: editRepeat === "NEVER" ? null : repeatUntilISO,
+        repeatUntil:
+          editRepeat === "NEVER"
+            ? null
+            : repeatUntilISO,
       }
 
       const res = await fetch(`/api/events/${eventId}`, {
@@ -487,6 +541,35 @@ export function ExpandableEventCard({
                     </div>
                   )}
                 </div>
+                {editRepeat === "WEEKLY" && (
+                  <div className="mt-3 flex flex-wrap gap-2" aria-label="Select days of week">
+                    {WEEKDAY_LABELS.map((day) => {
+                      const isSelected = editWeeklyDays.has(day.value)
+                      return (
+                        <button
+                          key={day.value}
+                          type="button"
+                          onClick={() => {
+                            const next = new Set(editWeeklyDays)
+                            if (next.has(day.value)) {
+                              next.delete(day.value)
+                            } else {
+                              next.add(day.value)
+                            }
+                            setEditWeeklyDays(next)
+                          }}
+                          className={`h-9 min-w-[48px] rounded-full border px-3 text-xs font-semibold transition ${
+                            isSelected
+                              ? "border-success/50 bg-success/10 text-success-600"
+                              : "border-default/30 bg-content1/95 text-default-600 hover:border-success/30"
+                          }`}
+                        >
+                          {day.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
               {editError && (

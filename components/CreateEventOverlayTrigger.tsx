@@ -50,6 +50,46 @@ function combineLocalDateTime(dateStr?: string, timeStr?: string) {
   return new Date(`${d}T${t}`).toISOString()
 }
 
+const WEEKDAY_LABELS: { value: number; label: string }[] = [
+  { value: 0, label: "Sun" },
+  { value: 1, label: "Mon" },
+  { value: 2, label: "Tue" },
+  { value: 3, label: "Wed" },
+  { value: 4, label: "Thu" },
+  { value: 5, label: "Fri" },
+  { value: 6, label: "Sat" },
+]
+
+function buildBaseTimeSlots(
+  repeat: RepeatOption,
+  dateStr: string,
+  startTime: string,
+  endTime: string,
+  weeklyDays: Set<number>,
+): TimeSlot[] {
+  const baseSlot = { start: combineLocalDateTime(dateStr, startTime), end: combineLocalDateTime(dateStr, endTime) }
+
+  if (repeat !== "WEEKLY") return [baseSlot]
+
+  // For weekly, include one slot per selected weekday on/after the chosen date for the first cycle.
+  const [year, month, day] = dateStr.split("-").map(Number)
+  const baseDate = new Date(year, (month || 1) - 1, day || 1)
+  const baseDay = baseDate.getDay()
+
+  const days = Array.from(weeklyDays.values()).sort((a, b) => a - b)
+  if (days.length === 0) return [baseSlot]
+
+  return days.map((dow) => {
+    const offset = dow - baseDay >= 0 ? dow - baseDay : dow - baseDay + 7
+    const d = new Date(baseDate.getTime() + offset * 86_400_000)
+    const dStr = d.toISOString().slice(0, 10)
+    return {
+      start: combineLocalDateTime(dStr, startTime),
+      end: combineLocalDateTime(dStr, endTime),
+    }
+  })
+}
+
 export function CreateEventOverlayTrigger({
   triggerClassName,
   triggerLabel,
@@ -74,6 +114,7 @@ export function CreateEventOverlayTrigger({
 
   const [repeat, setRepeat] = useState<RepeatOption>("NEVER")
   const [repeatUntil, setRepeatUntil] = useState("")
+  const [weeklyDays, setWeeklyDays] = useState<Set<number>>(new Set([new Date(startInit).getDay()]))
   const [location, setLocation] = useState("")
   const [reminder, setReminder] = useState(false)
 
@@ -118,6 +159,7 @@ export function CreateEventOverlayTrigger({
     setEndTime(endSplit.time)
     setRepeat("NEVER")
     setRepeatUntil("")
+    setWeeklyDays(new Set([new Date(startInit).getDay()]))
     setLocation("")
     setReminder(false)
     setOpen(true)
@@ -150,10 +192,15 @@ export function CreateEventOverlayTrigger({
       return
     }
 
+    const slots = buildBaseTimeSlots(repeat, date, startTime, endTime, weeklyDays)
     const repeatUntilISO = repeatUntil ? new Date(`${repeatUntil}T00:00`).toISOString() : null
     if (repeat !== "NEVER" && repeatUntilISO) {
       const repeatUntilDate = new Date(repeatUntilISO)
-      if (repeatUntilDate <= startDate) {
+      const earliestSlot = slots.reduce((min, slot) => {
+        const dt = new Date(slot.start)
+        return dt < min ? dt : min
+      }, new Date(slots[0]?.start ?? startDate))
+      if (repeatUntilDate <= earliestSlot) {
         setFormError("Repeat-until must be after the first time slot")
         return
       }
@@ -162,7 +209,7 @@ export function CreateEventOverlayTrigger({
     const payload: CreateEventPayload = {
       name: name.trim(),
       description: description?.trim() || undefined,
-      timeSlots: [{ start: startISO, end: endISO }],
+      timeSlots: slots,
       repeated: repeat ?? "NEVER",
       repeatUntil: repeat === "NEVER" ? undefined : repeatUntilISO,
     }
@@ -286,6 +333,36 @@ export function CreateEventOverlayTrigger({
                     </div>
                   )}
                 </div>
+
+                {repeat === "WEEKLY" && (
+                  <div className="mt-3 flex flex-wrap gap-2" aria-label="Select days of week">
+                    {WEEKDAY_LABELS.map((day) => {
+                      const isSelected = weeklyDays.has(day.value)
+                      return (
+                        <button
+                          key={day.value}
+                          type="button"
+                          onClick={() => {
+                            const next = new Set(weeklyDays)
+                            if (next.has(day.value)) {
+                              next.delete(day.value)
+                            } else {
+                              next.add(day.value)
+                            }
+                            setWeeklyDays(next)
+                          }}
+                          className={`h-9 min-w-[48px] rounded-full border px-3 text-xs font-semibold transition ${
+                            isSelected
+                              ? "border-primary/50 bg-primary/10 text-primary"
+                              : "border-default/30 bg-content1/95 text-default-600 hover:border-primary/30"
+                          }`}
+                        >
+                          {day.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Description */}
