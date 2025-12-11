@@ -87,7 +87,7 @@ const updateEventSchema = z
 
 type UserContext = z.infer<typeof userContextSchema>
 
-function buildSystemPrompt(userContext?: UserContext, userName?: string) {
+function buildSystemPrompt(userContext?: UserContext, userName?: string, userSchedule?: { id: string, name: string }) {
   const contextInfo = userContext
     ? `
 User Context:
@@ -95,6 +95,7 @@ User Context:
 - Timezone: ${userContext.timezone}
 - Local time: ${userContext.localTime}
 - Locale: ${userContext.locale || "not specified"}
+${userSchedule ? `- Primary Schedule ID: ${userSchedule.id} (Name: "${userSchedule.name}")` : ""}
 
 When the user mentions times like "tomorrow at 3pm" or "next Monday", interpret them in the user's timezone (${userContext.timezone}) and convert to UTC for storage.`
     : ""
@@ -102,14 +103,15 @@ When the user mentions times like "tomorrow at 3pm" or "next Monday", interpret 
   return `You are Tempora, a focused assistant that helps the currently authenticated user inspect and mutate their schedules and events, and coordinate with friends.
 ${contextInfo}
 Rules:
+- You have the user's Schedule ID in the context. Use it directly to list events or create/update events.
 - Always call the provided tools when you need real data. Do not guess IDs or fabricate schedule contents.
-- List schedules before referencing one, and list the events in question before updating or deleting them.
+- List the events in question before updating or deleting them.
 - For new events, confirm the target schedule and ensure the end time is after the start time.
 - When updating, explain what changed and mention the schedule name.
 - If the user has not supplied enough info (schedule, time window, etc.) ask a follow-up question.
 - Do not attempt to clarify facts already known with relative certainty. 
-    - For example if you check a users schedule list, and they only have one, you can assume this is what they are referring to when they ask about their schedule with reasonable certainty.
-- You can interact with friends' schedules if they are confirmed friends. Use 'list_friends' to find friends and 'get_friend_schedules' to see their calendars.
+    - You know the user's schedule ID, so assume they mean this schedule unless specified otherwise.
+- You can interact with friends' schedules if they are confirmed friends. Use 'list_friends' to find friends. The 'list_friends' tool now provides the friend's schedule ID directly.
 - Work in ISO-8601 timestamps (UTC) internally but present times to the user in their local timezone when possible.
 - Keep explanations short. Finish with an actionable summary of what you did or still need.
 
@@ -132,7 +134,27 @@ export async function POST(req: Request) {
 
     const userId = session.user.id
     const userName = session.user.fname + " " + session.user.lname
-    const systemPrompt = buildSystemPrompt(userContext, userName)
+
+    // Pre-fetch the user's primary schedule to optimize tool usage
+    let userSchedule = await prisma.schedule.findFirst({
+      where: { userId },
+      select: { id: true, name: true },
+      orderBy: { createdAt: "asc" }, // Assume the first created is the primary
+    })
+
+    // If no schedule exists, create one to ensure the user has a place for events
+    // This aligns with the "one schedule per user" policy
+    if (!userSchedule) {
+      userSchedule = await prisma.schedule.create({
+        data: {
+          userId,
+          name: "My Schedule",
+        },
+        select: { id: true, name: true },
+      })
+    }
+
+    const systemPrompt = buildSystemPrompt(userContext, userName, userSchedule)
 
     const ensureFriendship = async (friendId: string) => {
       const friendship = await prisma.friendship.findFirst({
@@ -150,37 +172,8 @@ export async function POST(req: Request) {
       return friendship
     }
 
-    const listSchedulesTool = tool(
-      async () => {
-        const schedules = await prisma.schedule.findMany({
-          where: { userId },
-          include: {
-            _count: { select: { events: true } },
-            events: {
-              take: 5,
-            },
-          },
-          orderBy: { createdAt: "asc" },
-        })
-
-        return JSON.stringify(
-          schedules.map((schedule) => ({
-            id: schedule.id,
-            name: schedule.name,
-            createdAt: schedule.createdAt.toISOString(),
-            eventCount: schedule._count.events,
-            sampleEvents: schedule.events.map(serializeEvent),
-          })),
-          null,
-          2,
-        )
-      },
-      {
-        name: "list_user_schedules",
-        description: "List every schedule owned by the logged-in user along with a few example events.",
-        schema: z.object({}),
-      },
-    )
+    // Tool removed to optimize workflow - user schedule is in context
+    // const listSchedulesTool = tool(...)
 
     const listEventsTool = tool(
       async ({ scheduleId, from, to }: { scheduleId: string; from?: string; to?: string }) => {
@@ -253,17 +246,43 @@ export async function POST(req: Request) {
             ],
           },
           include: {
-            user1: { select: { id: true, fname: true, lname: true, email: true } },
-            user2: { select: { id: true, fname: true, lname: true, email: true } },
+            user1: { 
+              select: { 
+                id: true, 
+                fname: true, 
+                lname: true, 
+                email: true,
+                schedules: {
+                  take: 1,
+                  select: { id: true },
+                  orderBy: { createdAt: "asc" }
+                }
+              } 
+            },
+            user2: { 
+              select: { 
+                id: true, 
+                fname: true, 
+                lname: true, 
+                email: true,
+                schedules: {
+                    take: 1,
+                    select: { id: true },
+                    orderBy: { createdAt: "asc" }
+                  }
+              } 
+            },
           },
         })
 
         const friends = friendships.map((f) => {
           const friend = f.user_id1 === userId ? f.user2 : f.user1
+          const scheduleId = friend.schedules[0]?.id || null
           return {
             id: friend.id,
             name: `${friend.fname} ${friend.lname}`.trim() || friend.email,
             email: friend.email,
+            scheduleId,
           }
         })
 
@@ -271,30 +290,13 @@ export async function POST(req: Request) {
       },
       {
         name: "list_friends",
-        description: "List all confirmed friends of the current user.",
+        description: "List all confirmed friends of the current user. Returns friend ID, name, email, and their primary scheduleId.",
         schema: z.object({}),
       },
     )
 
-    const getFriendSchedulesTool = tool(
-      async ({ friendId }: { friendId: string }) => {
-        await ensureFriendship(friendId)
-        
-        const schedules = await prisma.schedule.findMany({
-          where: { userId: friendId },
-          select: { id: true, name: true, createdAt: true },
-        })
-
-        return JSON.stringify(schedules, null, 2)
-      },
-      {
-        name: "get_friend_schedules",
-        description: "List schedules belonging to a friend. Requires friendId from list_friends.",
-        schema: z.object({
-          friendId: z.string().min(1, "friendId is required"),
-        }),
-      },
-    )
+    // Tool removed to optimize workflow - schedule ID is now provided by list_friends
+    // const getFriendSchedulesTool = tool(...)
 
     const getFriendEventsTool = tool(
       async ({ friendId, scheduleId, from, to }: { friendId: string, scheduleId: string; from?: string; to?: string }) => {
@@ -695,13 +697,13 @@ Example 2: Class that meets twice per week (Tue/Thu 10am-11:30am), repeating wee
     )
 
     const tools = [
-        listSchedulesTool, 
+        // listSchedulesTool, // Removed for optimization
         listEventsTool, 
         createEventTool, 
         updateEventTool, 
         deleteEventTool,
         listFriendsTool,
-        getFriendSchedulesTool,
+        // getFriendSchedulesTool is removed as list_friends now provides the schedule ID
         getFriendEventsTool,
         createSharedEventTool
     ]

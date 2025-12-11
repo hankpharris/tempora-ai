@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { CreateEventOverlayTriggerClient } from "@/components/CreateEventOverlayTriggerClient"
 import { ExpandableEventCard } from "@/components/ExpandableEventCard"
 import { LocalTimeRange } from "@/components/LocalTimeRange"
+import { ManageFriendshipsButton } from "@/components/ManageFriendshipsButton"
 import { MonthDayCell } from "@/components/MonthDayCell"
 import { MovingBlob } from "@/components/MovingBlob"
 import { auth } from "@/lib/auth"
@@ -281,9 +282,10 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                 <span className="hidden rounded-full border border-default/20 bg-default-100/60 px-3 py-1 dark:border-default/30 dark:bg-default-100/10 sm:inline-flex">
                   {highlightedEvent ? `Next: ${highlightedEvent.name}` : "No upcoming events"}
                 </span>
-                    <CreateEventOverlayTriggerClient
-                      triggerClassName="inline-flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary/90 hover:border-primary/60 hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                      triggerLabel="Create event"
+                <ManageFriendshipsButton />
+                <CreateEventOverlayTriggerClient
+                  triggerClassName="inline-flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary/90 hover:border-primary/60 hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                  triggerLabel="Create event"
                     />
                   </div>
                 </div>
