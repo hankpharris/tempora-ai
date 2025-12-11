@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { CreateEventOverlayTriggerClient } from "@/components/CreateEventOverlayTriggerClient"
 import { ExpandableEventCard } from "@/components/ExpandableEventCard"
 import { LocalTimeRange } from "@/components/LocalTimeRange"
+import { MonthDayCell } from "@/components/MonthDayCell"
 import { MovingBlob } from "@/components/MovingBlob"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -183,7 +184,8 @@ const monthLabel = MONTH_NAME_FORMATTER.format(viewMonth)
 const viewYear = viewMonth.getFullYear()
 const eventsByDate = groupEventsByDate(normalizedEvents)
 const monthMatrix = buildMonthMatrix(viewMonth, eventsByDate, today)
-const weekDays = buildWeekDays(viewMonth, eventsByDate, today)
+const weekAnchor = today
+const weekDays = buildWeekDays(weekAnchor, eventsByDate, today)
 const weekRangeLabel = formatWeekRangeLabel(weekDays)
 const focusedDay = resolveFocusedDay(weekDays)
 const dayEvents = focusedDay?.events ?? []
@@ -263,7 +265,13 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                       ))}
                     </div>
                     <div className="grid grid-cols-7 gap-3 px-4 pb-6 pt-4 auto-rows-[minmax(9rem,_auto)]">
-                      {monthMatrix.flat().map((day) => (
+                      {monthMatrix.flat().map((day) => {
+                        const styledEvents = day.events.map((event) => ({
+                          ...event,
+                          timeRange: formatTimeRange(event),
+                          styles: COLOR_STYLES[event.colorToken],
+                        }))
+                        return (
                         <div
                           key={day.key}
                           className={`rounded-xl border p-3 transition-colors ${
@@ -280,38 +288,10 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                               </span>
                             )}
                           </div>
-                          <div className="mt-3 space-y-2">
-                            {day.events.length === 0 ? (
-                              <p className="text-xs text-default-500">No events</p>
-                            ) : (
-                              <>
-                                {day.events.slice(0, 3).map((event) => {
-                                  const styles = COLOR_STYLES[event.colorToken]
-                                  return (
-                                    <ExpandableEventCard
-                                      key={`${day.key}-${event.id}`}
-                                      eventId={event.baseEventId}
-                                      slotIndex={event.slotIndex}
-                                      eventStart={event.start}
-                                      eventEnd={event.end}
-                                      repeated={event.repeated}
-                                      repeatUntil={event.repeatUntil}
-                                      name={event.name}
-                                      description={event.description}
-                                      timeRange={formatTimeRange(event)}
-                                      styles={styles}
-                                      variant="compact"
-                                    />
-                                  )
-                                })}
-                                {day.events.length > 3 && (
-                                  <p className="text-[11px] text-default-500">+{day.events.length - 3} more</p>
-                                )}
-                              </>
-                            )}
-                          </div>
+                          <MonthDayCell events={styledEvents} />
                         </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -360,7 +340,12 @@ const weekEventCount = weekDays.reduce((sum, day) => sum + day.events.length, 0)
                     </div>
                     <div className="absolute inset-x-0 bottom-0 top-[40px]">
                       {HOURS.map((hour) => (
-                        <div key={hour} className="h-[48px] border-t border-default/10 dark:border-default/20" />
+                        <div
+                          key={hour}
+                          className={`h-[48px] border-t border-default/10 dark:border-default/20 ${
+                            day.isToday ? "bg-primary/5" : ""
+                          }`}
+                        />
                       ))}
                     </div>
                     <div className="absolute left-0 right-0 top-[40px] h-[calc(100%-40px)] px-2 pb-4">
