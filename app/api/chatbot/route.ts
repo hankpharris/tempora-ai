@@ -48,6 +48,7 @@ const requestSchema = z.object({
     )
     .min(1),
   userContext: userContextSchema.optional(),
+  model: z.enum(["gpt-5-mini", "gpt-5-nano"]).optional().default("gpt-5-mini"),
 })
 
 const isoDateSchema = z
@@ -87,7 +88,7 @@ const updateEventSchema = z
 
 type UserContext = z.infer<typeof userContextSchema>
 
-function buildSystemPrompt(userContext?: UserContext, userName?: string, userSchedule?: { id: string, name: string }) {
+function buildSystemPrompt(userContext?: UserContext, userName?: string, userSchedule?: { id: string, name: string }, model?: string) {
   const contextInfo = userContext
     ? `
 User Context:
@@ -117,7 +118,7 @@ Rules:
 - Keep explanations short. Finish with an actionable summary of what you did or still need.
 - IMPORTANT: NEVER provide internal data like database ids or post-formatting timestamp data (unformated dates are fine, as the the format in which you recieved them)
 
-You are configured on gpt-5-mini/nano with tool access.`
+You are configured on ${model || "gpt-5-mini/nano"} with tool access.`
 }
 
 type IncomingMessage = z.infer<typeof requestSchema>["messages"][number]
@@ -132,7 +133,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json()
-    const { messages, userContext } = requestSchema.parse(body)
+    const { messages, userContext, model } = requestSchema.parse(body)
 
     const userId = session.user.id
     const userName = session.user.fname + " " + session.user.lname
@@ -156,7 +157,7 @@ export async function POST(req: Request) {
       })
     }
 
-    const systemPrompt = buildSystemPrompt(userContext, userName, userSchedule)
+    const systemPrompt = buildSystemPrompt(userContext, userName, userSchedule, model)
 
     const ensureFriendship = async (friendId: string) => {
       const friendship = await prisma.friendship.findFirst({
@@ -733,7 +734,7 @@ Example 2: Class that meets twice per week (Tue/Thu 10am-11:30am), repeating wee
     ]
 
     const llm = new ChatOpenAI({
-      model: "gpt-5-mini",
+      model: model,
       maxTokens: 4096,
       apiKey: env.OPENAI_API_KEY,
     })

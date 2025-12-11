@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
@@ -120,6 +121,7 @@ function MessageContent({ content }: { content: string | ContentPart[] }) {
 
 export function ChatbotDock() {
   const { data: session, status } = useSession()
+  const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_ASSISTANT_MESSAGE])
   const [input, setInput] = useState("")
@@ -127,6 +129,7 @@ export function ChatbotDock() {
   const [error, setError] = useState<string | null>(null)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
+  const [model, setModel] = useState<"gpt-5-mini" | "gpt-5-nano">("gpt-5-nano")
   const endRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
@@ -302,6 +305,7 @@ export function ChatbotDock() {
         body: JSON.stringify({
           messages: nextMessages.map(({ role, content }) => ({ role, content })),
           userContext: getUserContext(),
+          model,
         }),
       })
 
@@ -324,6 +328,9 @@ export function ChatbotDock() {
       }
 
       setMessages((current) => [...current, assistantMessage])
+      
+      // Refresh the page data to show any changes made by the chatbot
+      router.refresh()
     } catch (err) {
       const fallback =
         err instanceof Error ? err.message : "Something went wrong while contacting the assistant."
@@ -372,20 +379,37 @@ export function ChatbotDock() {
               exit={{ x: "100%" }}
               transition={{ type: "spring", stiffness: 260, damping: 32 }}
             >
-              <header className="flex items-start justify-between gap-3 border-b border-default/15 px-5 py-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-primary/70">Tempora AI</p>
-                  <p className="text-sm text-default-600">
-                    Powered by gpt-5 mini (low reasoning) plus LangChain calendar tools.
-                  </p>
+              <header className="flex flex-col gap-2 border-b border-default/15 px-5 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-primary/70">Tempora AI</p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <select
+                        value={model}
+                        onChange={(e) => setModel(e.target.value as "gpt-5-mini" | "gpt-5-nano")}
+                        className="rounded-md border border-default/30 bg-background px-2 py-1 text-xs font-medium text-default-700 outline-none focus:border-primary/50"
+                      >
+                        <option value="gpt-5-nano">gpt-5-nano (Fast)</option>
+                        <option value="gpt-5-mini">gpt-5-mini (Smart)</option>
+                      </select>
+                      <span className="text-[10px] text-default-500">
+                        {model === "gpt-5-nano" ? "(Experimental)" : ""}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={togglePanel}
+                    className="rounded-full border border-default/30 px-3 py-1 text-xs font-medium text-default-700 transition hover:bg-default-100/60"
+                  >
+                    Close
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={togglePanel}
-                  className="rounded-full border border-default/30 px-3 py-1 text-xs font-medium text-default-700 transition hover:bg-default-100/60"
-                >
-                  Close
-                </button>
+                <p className="text-xs text-default-500">
+                  {model === "gpt-5-nano" 
+                    ? "Nano is faster but experimental. Switch to Mini for complex tasks."
+                    : "Mini provides better reasoning for complex calendar operations."}
+                </p>
               </header>
 
               <div className="flex-1 overflow-y-auto px-5 py-4">
