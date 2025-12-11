@@ -19,7 +19,7 @@ export function ManageFriendshipsButton({ className }: ManageFriendshipsButtonPr
         color="primary" 
         variant="flat"
         size="sm"
-        className={twMerge("font-medium", className)}
+        className={twMerge("font-medium rounded-full", className)}
       >
         Manage Friendships
       </Button>

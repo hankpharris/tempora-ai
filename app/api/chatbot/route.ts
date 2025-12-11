@@ -18,7 +18,14 @@ const textContentPartSchema = z.object({
   text: z.string().min(1),
 })
 
-const contentPartSchema = z.union([textContentPartSchema, imageContentPartSchema])
+const fileContentPartSchema = z.object({
+    type: z.literal("input_file"),
+    filename: z.string(),
+    file_data: z.string(),
+    mime_type: z.string().optional(), // For internal use, not sent to API if redundant
+})
+
+const contentPartSchema = z.union([textContentPartSchema, imageContentPartSchema, fileContentPartSchema])
 
 const messageContentSchema = z.union([
   z.string().min(1),
@@ -41,6 +48,7 @@ const requestSchema = z.object({
     )
     .min(1),
   userContext: userContextSchema.optional(),
+  model: z.enum(["gpt-5-mini", "gpt-5-nano"]).optional().default("gpt-5-mini"),
 })
 
 const isoDateSchema = z
@@ -80,7 +88,7 @@ const updateEventSchema = z
 
 type UserContext = z.infer<typeof userContextSchema>
 
-function buildSystemPrompt(userContext?: UserContext, userName?: string) {
+function buildSystemPrompt(userContext?: UserContext, userName?: string, userSchedule?: { id: string, name: string }, model?: string) {
   const contextInfo = userContext
     ? `
 User Context:
@@ -88,6 +96,7 @@ User Context:
 - Timezone: ${userContext.timezone}
 - Local time: ${userContext.localTime}
 - Locale: ${userContext.locale || "not specified"}
+${userSchedule ? `- Primary Schedule ID: ${userSchedule.id} (Name: "${userSchedule.name}")` : ""}
 
 When the user mentions times like "tomorrow at 3pm" or "next Monday", interpret them in the user's timezone (${userContext.timezone}) and convert to UTC for storage.`
     : ""
@@ -95,18 +104,21 @@ When the user mentions times like "tomorrow at 3pm" or "next Monday", interpret 
   return `You are Tempora, a focused assistant that helps the currently authenticated user inspect and mutate their schedules and events, and coordinate with friends.
 ${contextInfo}
 Rules:
+- You have the user's Schedule ID in the context. Use it directly to list events or create/update events.
 - Always call the provided tools when you need real data. Do not guess IDs or fabricate schedule contents.
-- List schedules before referencing one, and list the events in question before updating or deleting them.
-- For new events, confirm the target schedule and ensure the end time is after the start time.
-- When updating, explain what changed and mention the schedule name.
-- If the user has not supplied enough info (schedule, time window, etc.) ask a follow-up question.
+- List the events in question before updating or deleting them, these actions should always require clear confirmation..
+- For new events, confirm the target schedule and ensure the end time is after the start time, only if needed.
+- If the user has not supplied enough info (schedule, time window, etc.) make a common sense assumption, and ask the user to clarify it.
 - Do not attempt to clarify facts already known with relative certainty. 
-    - For example if you check a users schedule list, and they only have one, you can assume this is what they are referring to when they ask about their schedule with reasonable certainty.
-- You can interact with friends' schedules if they are confirmed friends. Use 'list_friends' to find friends and 'get_friend_schedules' to see their calendars.
+- Minimize responses before action while still allowing users a chance for refinement and input.
+- IMPORTANT: If a user does not clarify details you have already assumed, and asked for clarification on, move forward with the assumption.
+- IMPORTANT: With the previous rule in mind, it should never take more than one follow-up response before action is taken.
+- You can interact with friends' schedules if they are confirmed friends. Use 'list_friends' to find friend and their schedule IDs. The 'list_friends' tool now provides the friend's schedule ID directly.
 - Work in ISO-8601 timestamps (UTC) internally but present times to the user in their local timezone when possible.
 - Keep explanations short. Finish with an actionable summary of what you did or still need.
+- IMPORTANT: NEVER provide internal data like database ids or post-formatting timestamp data (unformated dates are fine, as the the format in which you recieved them)
 
-You are configured on gpt-5-mini with tool access.`
+You are configured on ${model || "gpt-5-mini/nano"} with tool access.`
 }
 
 type IncomingMessage = z.infer<typeof requestSchema>["messages"][number]
@@ -121,11 +133,31 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json()
-    const { messages, userContext } = requestSchema.parse(body)
+    const { messages, userContext, model } = requestSchema.parse(body)
 
     const userId = session.user.id
     const userName = session.user.fname + " " + session.user.lname
-    const systemPrompt = buildSystemPrompt(userContext, userName)
+
+    // Pre-fetch the user's primary schedule to optimize tool usage
+    let userSchedule = await prisma.schedule.findFirst({
+      where: { userId },
+      select: { id: true, name: true },
+      orderBy: { createdAt: "asc" }, // Assume the first created is the primary
+    })
+
+    // If no schedule exists, create one to ensure the user has a place for events
+    // This aligns with the "one schedule per user" policy
+    if (!userSchedule) {
+      userSchedule = await prisma.schedule.create({
+        data: {
+          userId,
+          name: "My Schedule",
+        },
+        select: { id: true, name: true },
+      })
+    }
+
+    const systemPrompt = buildSystemPrompt(userContext, userName, userSchedule, model)
 
     const ensureFriendship = async (friendId: string) => {
       const friendship = await prisma.friendship.findFirst({
@@ -143,37 +175,8 @@ export async function POST(req: Request) {
       return friendship
     }
 
-    const listSchedulesTool = tool(
-      async () => {
-        const schedules = await prisma.schedule.findMany({
-          where: { userId },
-          include: {
-            _count: { select: { events: true } },
-            events: {
-              take: 5,
-            },
-          },
-          orderBy: { createdAt: "asc" },
-        })
-
-        return JSON.stringify(
-          schedules.map((schedule) => ({
-            id: schedule.id,
-            name: schedule.name,
-            createdAt: schedule.createdAt.toISOString(),
-            eventCount: schedule._count.events,
-            sampleEvents: schedule.events.map(serializeEvent),
-          })),
-          null,
-          2,
-        )
-      },
-      {
-        name: "list_user_schedules",
-        description: "List every schedule owned by the logged-in user along with a few example events.",
-        schema: z.object({}),
-      },
-    )
+    // Tool removed to optimize workflow - user schedule is in context
+    // const listSchedulesTool = tool(...)
 
     const listEventsTool = tool(
       async ({ scheduleId, from, to }: { scheduleId: string; from?: string; to?: string }) => {
@@ -246,17 +249,43 @@ export async function POST(req: Request) {
             ],
           },
           include: {
-            user1: { select: { id: true, fname: true, lname: true, email: true } },
-            user2: { select: { id: true, fname: true, lname: true, email: true } },
+            user1: { 
+              select: { 
+                id: true, 
+                fname: true, 
+                lname: true, 
+                email: true,
+                schedules: {
+                  take: 1,
+                  select: { id: true },
+                  orderBy: { createdAt: "asc" }
+                }
+              } 
+            },
+            user2: { 
+              select: { 
+                id: true, 
+                fname: true, 
+                lname: true, 
+                email: true,
+                schedules: {
+                    take: 1,
+                    select: { id: true },
+                    orderBy: { createdAt: "asc" }
+                  }
+              } 
+            },
           },
         })
 
         const friends = friendships.map((f) => {
           const friend = f.user_id1 === userId ? f.user2 : f.user1
+          const scheduleId = friend.schedules[0]?.id || null
           return {
             id: friend.id,
             name: `${friend.fname} ${friend.lname}`.trim() || friend.email,
             email: friend.email,
+            scheduleId,
           }
         })
 
@@ -264,30 +293,13 @@ export async function POST(req: Request) {
       },
       {
         name: "list_friends",
-        description: "List all confirmed friends of the current user.",
+        description: "List all confirmed friends of the current user. Returns friend ID, name, email, and their primary scheduleId.",
         schema: z.object({}),
       },
     )
 
-    const getFriendSchedulesTool = tool(
-      async ({ friendId }: { friendId: string }) => {
-        await ensureFriendship(friendId)
-        
-        const schedules = await prisma.schedule.findMany({
-          where: { userId: friendId },
-          select: { id: true, name: true, createdAt: true },
-        })
-
-        return JSON.stringify(schedules, null, 2)
-      },
-      {
-        name: "get_friend_schedules",
-        description: "List schedules belonging to a friend. Requires friendId from list_friends.",
-        schema: z.object({
-          friendId: z.string().min(1, "friendId is required"),
-        }),
-      },
-    )
+    // Tool removed to optimize workflow - schedule ID is now provided by list_friends
+    // const getFriendSchedulesTool = tool(...)
 
     const getFriendEventsTool = tool(
       async ({ friendId, scheduleId, from, to }: { friendId: string, scheduleId: string; from?: string; to?: string }) => {
@@ -346,8 +358,7 @@ export async function POST(req: Request) {
 
     const createSharedEventTool = tool(
         async ({ 
-          friendId,
-          friendScheduleId,
+          friends,
           userScheduleId,
           name, 
           description, 
@@ -355,8 +366,7 @@ export async function POST(req: Request) {
           repeated, 
           repeatUntil 
         }: { 
-          friendId: string
-          friendScheduleId: string
+          friends: Array<{ friendId: string; scheduleId: string }>
           userScheduleId: string
           name: string
           description?: string
@@ -364,38 +374,40 @@ export async function POST(req: Request) {
           repeated?: string
           repeatUntil?: string
         }) => {
-          await ensureFriendship(friendId)
-          
-          const friendSchedule = await prisma.schedule.findFirst({
-            where: { id: friendScheduleId, userId: friendId },
-          })
-          
-          if (!friendSchedule) {
-            throw new Error("Friend's schedule not found or does not belong to them.")
-          }
-
+          // Validate user schedule first
           const userSchedule = await ensureScheduleOwnership(userScheduleId, userId)
-
-          // Get friend's name for the event description
-          const friendUser = await prisma.user.findUnique({
-            where: { id: friendId },
-            select: { fname: true, lname: true, email: true },
-          })
-          const friendName = friendUser 
-            ? ([friendUser.fname, friendUser.lname].filter(Boolean).join(" ") || friendUser.email)
-            : "Friend"
-
-          // Get current user's name for the friend's event description
-          // session.user is available in the closure
+          
+          // Get current user's name
           const currentUserName = [session.user.fname, session.user.lname].filter(Boolean).join(" ") || session.user.email || "Friend"
 
-          const userEventDescription = description 
-            ? `${description}\n\nWith ${friendName}` 
-            : `With ${friendName}`
+          // Validate all friends and gather their info
+          const validFriends = []
+          for (const friendInput of friends) {
+            await ensureFriendship(friendInput.friendId)
             
-          const friendEventDescription = description 
-            ? `${description}\n\nWith ${currentUserName}` 
-            : `With ${currentUserName}`
+            const friendSchedule = await prisma.schedule.findFirst({
+              where: { id: friendInput.scheduleId, userId: friendInput.friendId },
+            })
+            
+            if (!friendSchedule) {
+              throw new Error(`Schedule not found for friend ${friendInput.friendId}`)
+            }
+
+            const friendUser = await prisma.user.findUnique({
+              where: { id: friendInput.friendId },
+              select: { fname: true, lname: true, email: true },
+            })
+            
+            const friendName = friendUser 
+              ? ([friendUser.fname, friendUser.lname].filter(Boolean).join(" ") || friendUser.email)
+              : "Friend"
+
+            validFriends.push({
+              ...friendInput,
+              schedule: friendSchedule,
+              name: friendName
+            })
+          }
 
           const repeatUntilDate = repeatUntil ? parseIsoDate(repeatUntil, "repeatUntil") : null
           const startDates: Date[] = []
@@ -415,20 +427,14 @@ export async function POST(req: Request) {
             endDates.push(endDate)
           }
 
-          // Create event for friend
-          const friendEvent = await prisma.event.create({
-            data: {
-              scheduleId: friendSchedule.id,
-              name,
-              description: friendEventDescription,
-              start: startDates,
-              end: endDates,
-              repeated: (repeated as "NEVER" | "DAILY" | "WEEKLY" | "MONTHLY") ?? "NEVER",
-              repeatUntil: repeatUntilDate,
-            },
-          })
+          const createdEvents = []
 
           // Create event for user
+          const allFriendNames = validFriends.map(f => f.name).join(", ")
+          const userEventDescription = description 
+            ? `${description}\n\nWith ${allFriendNames}` 
+            : `With ${allFriendNames}`
+
           const userEvent = await prisma.event.create({
             data: {
               scheduleId: userSchedule.id,
@@ -440,13 +446,39 @@ export async function POST(req: Request) {
               repeatUntil: repeatUntilDate,
             },
           })
+          createdEvents.push(userEvent)
+
+          // Create events for each friend
+          for (const friend of validFriends) {
+            // "With User, Friend B, Friend C..."
+            const otherFriends = validFriends
+              .filter(f => f.friendId !== friend.friendId)
+              .map(f => f.name)
+            
+            const withNames = [currentUserName, ...otherFriends].join(", ")
+            
+            const friendEventDescription = description 
+              ? `${description}\n\nWith ${withNames}` 
+              : `With ${withNames}`
+
+            const friendEvent = await prisma.event.create({
+              data: {
+                scheduleId: friend.schedule.id,
+                name,
+                description: friendEventDescription,
+                start: startDates,
+                end: endDates,
+                repeated: (repeated as "NEVER" | "DAILY" | "WEEKLY" | "MONTHLY") ?? "NEVER",
+                repeatUntil: repeatUntilDate,
+              },
+            })
+            createdEvents.push(friendEvent)
+          }
   
           return JSON.stringify(
             {
-              message: "Shared event created on both schedules",
-              friendId,
-              friendEvent: serializeEvent(friendEvent),
-              userEvent: serializeEvent(userEvent),
+              message: `Shared event created for you and ${validFriends.length} friend(s)`,
+              events: createdEvents.map(serializeEvent),
             },
             null,
             2,
@@ -454,10 +486,12 @@ export async function POST(req: Request) {
         },
         {
           name: "create_shared_event",
-          description: "Create a shared event on both your schedule and a friend's schedule. This ensures you both have the event.",
+          description: "Create a shared event on your schedule and one or more friends' schedules. Note that details are automatically appended with participant names, no need to include them yourself.",
           schema: z.object({
-            friendId: z.string().min(1),
-            friendScheduleId: z.string().min(1, "Friend's scheduleId is required"),
+            friends: z.array(z.object({
+              friendId: z.string().min(1),
+              scheduleId: z.string().min(1),
+            })).min(1, "At least one friend is required"),
             userScheduleId: z.string().min(1, "Your scheduleId is required"),
             name: z.string().min(1, "Event name is required"),
             description: z.string().optional(),
@@ -688,20 +722,20 @@ Example 2: Class that meets twice per week (Tue/Thu 10am-11:30am), repeating wee
     )
 
     const tools = [
-        listSchedulesTool, 
+        // listSchedulesTool, // Removed for optimization
         listEventsTool, 
         createEventTool, 
         updateEventTool, 
         deleteEventTool,
         listFriendsTool,
-        getFriendSchedulesTool,
+        // getFriendSchedulesTool is removed as list_friends now provides the schedule ID
         getFriendEventsTool,
         createSharedEventTool
     ]
 
     const llm = new ChatOpenAI({
-      model: "gpt-5-mini",
-      maxCompletionTokens: 4096,
+      model: model,
+      maxTokens: 4096,
       apiKey: env.OPENAI_API_KEY,
     })
 
@@ -714,12 +748,18 @@ Example 2: Class that meets twice per week (Tue/Thu 10am-11:30am), repeating wee
     const langChainMessages = mapToLangChainMessages(messages)
 
     console.log("[chatbot] Invoking agent with", langChainMessages.length, "messages")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     langChainMessages.forEach((msg, idx) => {
       const msgType = msg._getType()
-      const hasImages = Array.isArray(msg.content) && 
-        msg.content.some((c: unknown) => typeof c === "object" && c !== null && "type" in c && (c as { type: string }).type === "image_url")
-      console.log(`[chatbot] Input[${idx}] type=${msgType}, hasImages=${hasImages}`)
-    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const contentParts = Array.isArray(msg.content) ? msg.content : []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hasImages = contentParts.some((c: any) => c?.type === "image_url")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hasPdf = contentParts.some((c: any) => c?.type === "image_url" && (c?.image_url?.url as string)?.includes("application/pdf"))
+    
+    console.log(`[chatbot] Input[${idx}] type=${msgType}, hasImages=${hasImages}, hasPdf=${hasPdf}`)
+  })
 
     const result = await agent.invoke({
       messages: langChainMessages,
@@ -729,6 +769,7 @@ Example 2: Class that meets twice per week (Tue/Thu 10am-11:30am), repeating wee
     console.log("[chatbot] Agent returned", allMessages.length, "messages")
 
     // Log all messages for debugging
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     allMessages.forEach((msg: { _getType: () => string; content: unknown; tool_calls?: unknown[] }, idx: number) => {
       const msgType = msg._getType()
       const hasToolCalls = "tool_calls" in msg && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0
@@ -880,13 +921,59 @@ function serializeEvent(event: {
 function mapToLangChainMessages(messages: IncomingMessage[]) {
   return messages.map((message) => {
     const content = normalizeMessageContent(message.content)
+    
+    // Check for PDF data URLs and convert them to text (placeholder) or remove them
+    // OpenAI's Chat Completion API doesn't support PDFs directly as base64 in "image_url"
+    // They are supported via file uploads (Assistants API) or if using a model with specific capabilities that allows this structure.
+    // However, the error "Invalid MIME type" confirms we cannot send application/pdf in image_url.
+    
+    // As a workaround, we will filter out PDF "image_url" parts and append a system note.
+    // In a real implementation, you'd want to upload the PDF to OpenAI Files API or parse text locally.
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let processedContent: any = content
+    if (Array.isArray(processedContent)) {
+       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+       processedContent = processedContent.map((part: any) => {
+         // Convert standard image_url with PDF data URI to the input_file format expected by experimental models
+         // or handle as raw text/placeholder if using older models that don't support it.
+         
+         if (part.type === "image_url" && part.image_url.url.startsWith("data:application/pdf")) {
+           const matches = part.image_url.url.match(/^data:application\/pdf;base64,(.+)$/)
+           if (matches && matches[1]) {
+             // We're converting the incoming data URL into the OpenAI Chat Completions format
+             // The user provided this specific format:
+             // {
+             //     "type": "file",
+             //     "file": {
+             //         "filename": "my-file.pdf",
+             //         "file_data": "data:application/pdf;base64,..."
+             //     }
+             // }
+             
+             return {
+                type: "file", 
+                file: {
+                    filename: "document.pdf",
+                    file_data: part.image_url.url
+                }
+             // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             } as any
+           }
+         }
+         return part
+       })
+    }
+
     switch (message.role) {
       case "system":
-        return new SystemMessage(typeof content === "string" ? content : extractTextFromContent(content))
+        return new SystemMessage(typeof processedContent === "string" ? processedContent : extractTextFromContent(processedContent))
       case "assistant":
-        return new AIMessage(typeof content === "string" ? content : extractTextFromContent(content))
+        return new AIMessage(typeof processedContent === "string" ? processedContent : extractTextFromContent(processedContent))
       default:
-        return new HumanMessage({ content })
+        // We cast to 'any' to bypass LangChain's strict content type validation which might not know about 'input_file' yet
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return new HumanMessage({ content: processedContent as any })
     }
   })
 }
