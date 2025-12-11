@@ -72,8 +72,8 @@ function buildBaseTimeSlots(
   if (repeat !== "WEEKLY") return [baseSlot]
 
   // For weekly, include one slot per selected weekday on/after the chosen date for the first cycle.
-  const [year, month, day] = dateStr.split("-").map(Number)
-  const baseDate = new Date(year, (month || 1) - 1, day || 1)
+  const [year = 1970, month = 1, day = 1] = dateStr.split("-").map(Number)
+  const baseDate = new Date(year, month - 1, day)
   const baseDay = baseDate.getDay()
 
   const days = Array.from(weeklyDays.values()).sort((a, b) => a - b)
@@ -176,8 +176,10 @@ export function CreateEventOverlayTrigger({
       return
     }
 
-    const startISO = combineLocalDateTime(date, startTime)
-    const endISO = combineLocalDateTime(date, endTime)
+    const safeDate = date || new Date().toISOString().slice(0, 10)
+
+    const startISO = combineLocalDateTime(safeDate, startTime)
+    const endISO = combineLocalDateTime(safeDate, endTime)
 
     const startDate = new Date(startISO)
     const endDate = new Date(endISO)
@@ -192,7 +194,7 @@ export function CreateEventOverlayTrigger({
       return
     }
 
-    const slots = buildBaseTimeSlots(repeat, date, startTime, endTime, weeklyDays)
+    const slots = buildBaseTimeSlots(repeat, safeDate, startTime, endTime, weeklyDays)
     const repeatUntilISO = repeatUntil ? new Date(`${repeatUntil}T00:00`).toISOString() : null
     if (repeat !== "NEVER" && repeatUntilISO) {
       const repeatUntilDate = new Date(repeatUntilISO)

@@ -65,8 +65,8 @@ function generateRepeatingTimeSlots(
   const baseSlot = { start: combineLocalDateTimeToISO(dateStr, startTime), end: combineLocalDateTimeToISO(dateStr, endTime) }
   if (repeat !== "WEEKLY") return [baseSlot]
 
-  const [year, month, day] = dateStr.split("-").map(Number)
-  const baseDate = new Date(year, (month || 1) - 1, day || 1)
+  const [year = 1970, month = 1, day = 1] = dateStr.split("-").map(Number)
+  const baseDate = new Date(year, month - 1, day)
   const baseDay = baseDate.getDay()
   const days = Array.from(weeklyDays.values()).sort((a, b) => a - b)
   if (days.length === 0) return [baseSlot]
@@ -131,6 +131,7 @@ export function ExpandableEventCard({
   const [editRepeatUntil, setEditRepeatUntil] = useState(
     repeatUntil ? repeatUntil.toISOString().slice(0, 10) : "",
   )
+  const [editDateValue, setEditDateValue] = useState(editDate)
 
   const hasDescription = description && description.length > 0
   const hasLongName = name.length > 20
@@ -175,6 +176,7 @@ export function ExpandableEventCard({
     setEditName(name)
     setEditDescription(description ?? "")
     setEditDate(defaultDateTimes.start.date)
+    setEditDateValue(defaultDateTimes.start.date)
     setEditStartTime(defaultDateTimes.start.time)
     setEditEndTime(defaultDateTimes.end.time)
     setEditWeeklyDays(new Set([defaultDateTimes.startDate.getDay()]))
@@ -201,8 +203,10 @@ export function ExpandableEventCard({
       return
     }
 
-    const startISO = combineLocalDateTimeToISO(editDate, editStartTime)
-    const endISO = combineLocalDateTimeToISO(editDate, editEndTime)
+    const safeDate = editDateValue || editDate || new Date().toISOString().slice(0, 10)
+
+    const startISO = combineLocalDateTimeToISO(safeDate, editStartTime)
+    const endISO = combineLocalDateTimeToISO(safeDate, editEndTime)
     const startDate = new Date(startISO)
     const endDate = new Date(endISO)
 
@@ -218,7 +222,7 @@ export function ExpandableEventCard({
 
     try {
       setIsSaving(true)
-      const timeSlots = generateRepeatingTimeSlots(editRepeat, editDate, editStartTime, editEndTime, editWeeklyDays)
+      const timeSlots = generateRepeatingTimeSlots(editRepeat, safeDate, editStartTime, editEndTime, editWeeklyDays)
       const repeatUntilISO =
         editRepeat !== "NEVER" && editRepeatUntil ? new Date(`${editRepeatUntil}T00:00`).toISOString() : null
       if (repeatUntilISO) {
@@ -476,8 +480,11 @@ export function ExpandableEventCard({
                   <label className="mb-1 block text-xs uppercase tracking-[0.22em] text-default-500">Date</label>
                   <input
                     type="date"
-                    value={editDate}
-                    onChange={(e) => setEditDate(e.target.value)}
+                    value={editDateValue}
+                    onChange={(e) => {
+                      setEditDate(e.target.value)
+                      setEditDateValue(e.target.value)
+                    }}
                     className="w-full h-10 rounded-lg border border-default/30 bg-content1/95 px-3 text-sm focus:outline-none focus:ring-0 focus:border-success/50"
                   />
                 </div>
