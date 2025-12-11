@@ -1,6 +1,6 @@
 "use client"
 
-import { cn } from "@heroui/react"
+import { Button, cn } from "@heroui/react"
 import Link from "next/link"
 import { useSession } from "next-auth/react"
 import { usePathname } from "next/navigation"
@@ -62,7 +62,7 @@ export function GlobalNavbar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          {session?.user && (
+          {session?.user ? (
             <div className="mr-2 hidden items-center gap-2 text-sm md:flex">
               <span className="text-default-500">Logged in as</span>
               <span className="font-medium text-foreground">
@@ -75,6 +75,16 @@ export function GlobalNavbar() {
               )}
               <LogoutButton />
             </div>
+          ) : (
+            <Button
+              as={Link}
+              href="/login"
+              color="primary"
+              variant="flat"
+              className="mr-2 hidden font-medium md:flex"
+            >
+              Log In
+            </Button>
           )}
           <ThemeToggle />
           <button
@@ -114,7 +124,7 @@ export function GlobalNavbar() {
               </Link>
             ))}
             
-            {session?.user && (
+            {session?.user ? (
               <div className="mt-2 flex items-center justify-between border-t border-primary/10 px-3 py-2 pt-4">
                 <div className="flex flex-col">
                   <span className="text-xs text-default-500">Logged in as</span>
@@ -130,6 +140,19 @@ export function GlobalNavbar() {
                   )}
                   <LogoutButton />
                 </div>
+              </div>
+            ) : (
+              <div className="mt-2 border-t border-primary/10 px-3 pt-3">
+                <Button
+                  as={Link}
+                  href="/login"
+                  color="primary"
+                  variant="flat"
+                  className="w-full font-medium"
+                  onPress={() => setIsMenuOpen(false)}
+                >
+                  Log In
+                </Button>
               </div>
             )}
           </nav>
