@@ -448,8 +448,8 @@ export function ChatbotDock() {
                     <div className="flex flex-wrap gap-2 rounded-xl border border-default/20 bg-default-50/50 p-2">
                       {attachedFiles.map((file) => (
                         <div key={file.id} className="group relative">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           {file.type.startsWith("image/") ? (
+                            // eslint-disable-next-line @next/next/no-img-element
                             <img
                               src={file.dataUrl}
                               alt={file.name}
