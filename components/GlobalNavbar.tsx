@@ -2,7 +2,7 @@
 
 import { cn } from "@heroui/react"
 import Link from "next/link"
-import { useSession } from "next-auth/react"
+import { signOut, useSession } from "next-auth/react"
 import { usePathname } from "next/navigation"
 import { useState } from "react"
 
@@ -17,10 +17,13 @@ export function GlobalNavbar() {
   const { data: session } = useSession()
   const pathname = usePathname()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const isAuthenticated = Boolean(session?.user)
+  const isLoginPage = pathname === "/login"
 
   const isAdmin = session?.user?.type === "ADMIN"
   const links = isAdmin ? [...baseLinks, { href: "/admin", label: "Admin" }] : baseLinks
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href))
+  const handleLogout = () => signOut({ callbackUrl: "/login" })
 
   return (
     <header className="relative sticky top-0 z-40 border-b border-primary/15 bg-background/90 backdrop-blur-xl dark:border-primary/25">
@@ -61,6 +64,42 @@ export function GlobalNavbar() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          {isAuthenticated ? (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex items-center gap-2 rounded-xl border border-danger/20 bg-danger/5 px-3 py-2 text-sm font-semibold text-danger-600 shadow-sm shadow-danger/10 transition hover:border-danger/40 hover:bg-danger/10"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+                <path
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.6"
+                  d="M15 17l5-5-5-5M4 12h16M4 5h5M4 19h5"
+                />
+              </svg>
+              <span>Log out</span>
+            </button>
+          ) : (
+            !isLoginPage && (
+              <Link
+                href="/login"
+                className="inline-flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-foreground shadow-sm shadow-primary/10 transition hover:border-primary/50 hover:bg-primary/20"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+                  <path
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.6"
+                    d="M9 7l-5 5 5 5M20 12H4M20 5h-5M20 19h-5"
+                  />
+                </svg>
+                <span>Log in</span>
+              </Link>
+            )
+          )}
           <ThemeToggle />
           <button
             type="button"
@@ -98,6 +137,30 @@ export function GlobalNavbar() {
                 <span className="h-2 w-2 rounded-full bg-primary/50" />
               </Link>
             ))}
+            <div className="pt-1">
+              {isAuthenticated ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false)
+                    handleLogout()
+                  }}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-danger/20 bg-danger/5 px-3 py-2 text-sm font-semibold text-danger-600 shadow-sm shadow-danger/10 transition hover:border-danger/40 hover:bg-danger/10"
+                >
+                  <span>Log out</span>
+                </button>
+              ) : (
+                !isLoginPage && (
+                  <Link
+                    href="/login"
+                    onClick={() => setIsMenuOpen(false)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 py-2 text-sm font-semibold text-foreground shadow-sm shadow-primary/10 transition hover:border-primary/50 hover:bg-primary/20"
+                  >
+                    <span>Log in</span>
+                  </Link>
+                )
+              )}
+            </div>
           </nav>
         </div>
       )}
