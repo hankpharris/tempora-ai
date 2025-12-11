@@ -105,17 +105,19 @@ ${contextInfo}
 Rules:
 - You have the user's Schedule ID in the context. Use it directly to list events or create/update events.
 - Always call the provided tools when you need real data. Do not guess IDs or fabricate schedule contents.
-- List the events in question before updating or deleting them.
-- For new events, confirm the target schedule and ensure the end time is after the start time.
-- When updating, explain what changed and mention the schedule name.
-- If the user has not supplied enough info (schedule, time window, etc.) ask a follow-up question.
+- List the events in question before updating or deleting them, these actions should always require clear confirmation..
+- For new events, confirm the target schedule and ensure the end time is after the start time, only if needed.
+- If the user has not supplied enough info (schedule, time window, etc.) make a common sense assumption, and ask the user to clarify it.
 - Do not attempt to clarify facts already known with relative certainty. 
-    - You know the user's schedule ID, so assume they mean this schedule unless specified otherwise.
-- You can interact with friends' schedules if they are confirmed friends. Use 'list_friends' to find friends. The 'list_friends' tool now provides the friend's schedule ID directly.
+- Minimize responses before action while still allowing users a chance for refinement and input.
+- IMPORTANT: If a user does not clarify details you have already assumed, and asked for clarification on, move forward with the assumption.
+- IMPORTANT: With the previous rule in mind, it should never take more than one follow-up response before action is taken.
+- You can interact with friends' schedules if they are confirmed friends. Use 'list_friends' to find friend and their schedule IDs. The 'list_friends' tool now provides the friend's schedule ID directly.
 - Work in ISO-8601 timestamps (UTC) internally but present times to the user in their local timezone when possible.
 - Keep explanations short. Finish with an actionable summary of what you did or still need.
+- IMPORTANT: NEVER provide internal data like database ids or post-formatting timestamp data (unformated dates are fine, as the the format in which you recieved them)
 
-You are configured on gpt-5-mini with tool access.`
+You are configured on gpt-5-mini/nano with tool access.`
 }
 
 type IncomingMessage = z.infer<typeof requestSchema>["messages"][number]
@@ -355,8 +357,7 @@ export async function POST(req: Request) {
 
     const createSharedEventTool = tool(
         async ({ 
-          friendId,
-          friendScheduleId,
+          friends,
           userScheduleId,
           name, 
           description, 
@@ -364,8 +365,7 @@ export async function POST(req: Request) {
           repeated, 
           repeatUntil 
         }: { 
-          friendId: string
-          friendScheduleId: string
+          friends: Array<{ friendId: string; scheduleId: string }>
           userScheduleId: string
           name: string
           description?: string
@@ -373,38 +373,40 @@ export async function POST(req: Request) {
           repeated?: string
           repeatUntil?: string
         }) => {
-          await ensureFriendship(friendId)
-          
-          const friendSchedule = await prisma.schedule.findFirst({
-            where: { id: friendScheduleId, userId: friendId },
-          })
-          
-          if (!friendSchedule) {
-            throw new Error("Friend's schedule not found or does not belong to them.")
-          }
-
+          // Validate user schedule first
           const userSchedule = await ensureScheduleOwnership(userScheduleId, userId)
-
-          // Get friend's name for the event description
-          const friendUser = await prisma.user.findUnique({
-            where: { id: friendId },
-            select: { fname: true, lname: true, email: true },
-          })
-          const friendName = friendUser 
-            ? ([friendUser.fname, friendUser.lname].filter(Boolean).join(" ") || friendUser.email)
-            : "Friend"
-
-          // Get current user's name for the friend's event description
-          // session.user is available in the closure
+          
+          // Get current user's name
           const currentUserName = [session.user.fname, session.user.lname].filter(Boolean).join(" ") || session.user.email || "Friend"
 
-          const userEventDescription = description 
-            ? `${description}\n\nWith ${friendName}` 
-            : `With ${friendName}`
+          // Validate all friends and gather their info
+          const validFriends = []
+          for (const friendInput of friends) {
+            await ensureFriendship(friendInput.friendId)
             
-          const friendEventDescription = description 
-            ? `${description}\n\nWith ${currentUserName}` 
-            : `With ${currentUserName}`
+            const friendSchedule = await prisma.schedule.findFirst({
+              where: { id: friendInput.scheduleId, userId: friendInput.friendId },
+            })
+            
+            if (!friendSchedule) {
+              throw new Error(`Schedule not found for friend ${friendInput.friendId}`)
+            }
+
+            const friendUser = await prisma.user.findUnique({
+              where: { id: friendInput.friendId },
+              select: { fname: true, lname: true, email: true },
+            })
+            
+            const friendName = friendUser 
+              ? ([friendUser.fname, friendUser.lname].filter(Boolean).join(" ") || friendUser.email)
+              : "Friend"
+
+            validFriends.push({
+              ...friendInput,
+              schedule: friendSchedule,
+              name: friendName
+            })
+          }
 
           const repeatUntilDate = repeatUntil ? parseIsoDate(repeatUntil, "repeatUntil") : null
           const startDates: Date[] = []
@@ -424,20 +426,14 @@ export async function POST(req: Request) {
             endDates.push(endDate)
           }
 
-          // Create event for friend
-          const friendEvent = await prisma.event.create({
-            data: {
-              scheduleId: friendSchedule.id,
-              name,
-              description: friendEventDescription,
-              start: startDates,
-              end: endDates,
-              repeated: (repeated as "NEVER" | "DAILY" | "WEEKLY" | "MONTHLY") ?? "NEVER",
-              repeatUntil: repeatUntilDate,
-            },
-          })
+          const createdEvents = []
 
           // Create event for user
+          const allFriendNames = validFriends.map(f => f.name).join(", ")
+          const userEventDescription = description 
+            ? `${description}\n\nWith ${allFriendNames}` 
+            : `With ${allFriendNames}`
+
           const userEvent = await prisma.event.create({
             data: {
               scheduleId: userSchedule.id,
@@ -449,13 +445,39 @@ export async function POST(req: Request) {
               repeatUntil: repeatUntilDate,
             },
           })
+          createdEvents.push(userEvent)
+
+          // Create events for each friend
+          for (const friend of validFriends) {
+            // "With User, Friend B, Friend C..."
+            const otherFriends = validFriends
+              .filter(f => f.friendId !== friend.friendId)
+              .map(f => f.name)
+            
+            const withNames = [currentUserName, ...otherFriends].join(", ")
+            
+            const friendEventDescription = description 
+              ? `${description}\n\nWith ${withNames}` 
+              : `With ${withNames}`
+
+            const friendEvent = await prisma.event.create({
+              data: {
+                scheduleId: friend.schedule.id,
+                name,
+                description: friendEventDescription,
+                start: startDates,
+                end: endDates,
+                repeated: (repeated as "NEVER" | "DAILY" | "WEEKLY" | "MONTHLY") ?? "NEVER",
+                repeatUntil: repeatUntilDate,
+              },
+            })
+            createdEvents.push(friendEvent)
+          }
   
           return JSON.stringify(
             {
-              message: "Shared event created on both schedules",
-              friendId,
-              friendEvent: serializeEvent(friendEvent),
-              userEvent: serializeEvent(userEvent),
+              message: `Shared event created for you and ${validFriends.length} friend(s)`,
+              events: createdEvents.map(serializeEvent),
             },
             null,
             2,
@@ -463,10 +485,12 @@ export async function POST(req: Request) {
         },
         {
           name: "create_shared_event",
-          description: "Create a shared event on both your schedule and a friend's schedule. This ensures you both have the event.",
+          description: "Create a shared event on your schedule and one or more friends' schedules. Note that details are automatically appended with participant names, no need to include them yourself.",
           schema: z.object({
-            friendId: z.string().min(1),
-            friendScheduleId: z.string().min(1, "Friend's scheduleId is required"),
+            friends: z.array(z.object({
+              friendId: z.string().min(1),
+              scheduleId: z.string().min(1),
+            })).min(1, "At least one friend is required"),
             userScheduleId: z.string().min(1, "Your scheduleId is required"),
             name: z.string().min(1, "Event name is required"),
             description: z.string().optional(),

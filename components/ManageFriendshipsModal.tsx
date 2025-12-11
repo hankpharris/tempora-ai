@@ -161,11 +161,10 @@ export function ManageFriendshipsModal({ isOpen, onOpenChange }: ManageFriendshi
       size="2xl"
       scrollBehavior="inside"
       backdrop="blur"
-      className="dark:bg-content1"
+      className="dark:bg-content1 rounded-3xl"
       placement="center"
-      radius="lg"
     >
-      <ModalContent className="bg-white dark:bg-content1 border border-default-200 shadow-xl">
+      <ModalContent className="bg-white dark:bg-content1 border border-default-200 shadow-xl rounded-3xl">
         {(onClose) => (
           <>
             <ModalHeader className="flex flex-col gap-1 border-b border-default-100">Manage Friendships</ModalHeader>

@@ -254,7 +254,7 @@ export function ChatbotDock() {
     }
 
     if (!isAuthenticated) {
-      setError("Sign in to let Tempora Copilot work with your schedules.")
+      setError("Sign in to let Tempora work with your schedules.")
       return
     }
 
@@ -374,7 +374,7 @@ export function ChatbotDock() {
             >
               <header className="flex items-start justify-between gap-3 border-b border-default/15 px-5 py-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.3em] text-primary/70">Tempora Copilot</p>
+                  <p className="text-xs uppercase tracking-[0.3em] text-primary/70">Tempora AI</p>
                   <p className="text-sm text-default-600">
                     Powered by gpt-5 mini (low reasoning) plus LangChain calendar tools.
                   </p>
@@ -553,7 +553,7 @@ export function ChatbotDock() {
         onClick={togglePanel}
         className="pointer-events-auto flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-primary/30 transition hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary/70"
       >
-        {isOpen ? "Hide copilot" : "Ask Tempora"}
+        {isOpen ? "Hide Tempora AI" : "Ask Tempora"}
       </button>
     </div>
   )
