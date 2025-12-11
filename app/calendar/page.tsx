@@ -799,7 +799,10 @@ function buildWeekColumnLanes(events: NormalizedEvent[], referenceDay: Date) {
 
   const flushCluster = () => {
     for (let i = clusterStartIndex; i < placements.length; i++) {
-      placements[i].totalLanes = clusterMaxLanes || 1
+      const placement = placements[i]
+      if (placement) {
+        placement.totalLanes = clusterMaxLanes || 1
+      }
     }
   }
 
