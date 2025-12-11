@@ -18,7 +18,14 @@ const textContentPartSchema = z.object({
   text: z.string().min(1),
 })
 
-const contentPartSchema = z.union([textContentPartSchema, imageContentPartSchema])
+const fileContentPartSchema = z.object({
+    type: z.literal("input_file"),
+    filename: z.string(),
+    file_data: z.string(),
+    mime_type: z.string().optional(), // For internal use, not sent to API if redundant
+})
+
+const contentPartSchema = z.union([textContentPartSchema, imageContentPartSchema, fileContentPartSchema])
 
 const messageContentSchema = z.union([
   z.string().min(1),
@@ -701,7 +708,7 @@ Example 2: Class that meets twice per week (Tue/Thu 10am-11:30am), repeating wee
 
     const llm = new ChatOpenAI({
       model: "gpt-5-mini",
-      maxCompletionTokens: 4096,
+      maxTokens: 4096,
       apiKey: env.OPENAI_API_KEY,
     })
 
@@ -716,9 +723,11 @@ Example 2: Class that meets twice per week (Tue/Thu 10am-11:30am), repeating wee
     console.log("[chatbot] Invoking agent with", langChainMessages.length, "messages")
     langChainMessages.forEach((msg, idx) => {
       const msgType = msg._getType()
-      const hasImages = Array.isArray(msg.content) && 
-        msg.content.some((c: unknown) => typeof c === "object" && c !== null && "type" in c && (c as { type: string }).type === "image_url")
-      console.log(`[chatbot] Input[${idx}] type=${msgType}, hasImages=${hasImages}`)
+      const contentParts = Array.isArray(msg.content) ? msg.content : []
+      const hasImages = contentParts.some((c: any) => c?.type === "image_url")
+      const hasPdf = contentParts.some((c: any) => c?.type === "image_url" && (c?.image_url?.url as string)?.includes("application/pdf"))
+      
+      console.log(`[chatbot] Input[${idx}] type=${msgType}, hasImages=${hasImages}, hasPdf=${hasPdf}`)
     })
 
     const result = await agent.invoke({
@@ -880,13 +889,55 @@ function serializeEvent(event: {
 function mapToLangChainMessages(messages: IncomingMessage[]) {
   return messages.map((message) => {
     const content = normalizeMessageContent(message.content)
+    
+    // Check for PDF data URLs and convert them to text (placeholder) or remove them
+    // OpenAI's Chat Completion API doesn't support PDFs directly as base64 in "image_url"
+    // They are supported via file uploads (Assistants API) or if using a model with specific capabilities that allows this structure.
+    // However, the error "Invalid MIME type" confirms we cannot send application/pdf in image_url.
+    
+    // As a workaround, we will filter out PDF "image_url" parts and append a system note.
+    // In a real implementation, you'd want to upload the PDF to OpenAI Files API or parse text locally.
+    
+    let processedContent: any = content
+    if (Array.isArray(processedContent)) {
+       processedContent = processedContent.map((part: any) => {
+         // Convert standard image_url with PDF data URI to the input_file format expected by experimental models
+         // or handle as raw text/placeholder if using older models that don't support it.
+         
+         if (part.type === "image_url" && part.image_url.url.startsWith("data:application/pdf")) {
+           const matches = part.image_url.url.match(/^data:application\/pdf;base64,(.+)$/)
+           if (matches && matches[1]) {
+             // We're converting the incoming data URL into the OpenAI Chat Completions format
+             // The user provided this specific format:
+             // {
+             //     "type": "file",
+             //     "file": {
+             //         "filename": "my-file.pdf",
+             //         "file_data": "data:application/pdf;base64,..."
+             //     }
+             // }
+             
+             return {
+                type: "file", 
+                file: {
+                    filename: "document.pdf",
+                    file_data: part.image_url.url
+                }
+             } as any
+           }
+         }
+         return part
+       })
+    }
+
     switch (message.role) {
       case "system":
-        return new SystemMessage(typeof content === "string" ? content : extractTextFromContent(content))
+        return new SystemMessage(typeof processedContent === "string" ? processedContent : extractTextFromContent(processedContent))
       case "assistant":
-        return new AIMessage(typeof content === "string" ? content : extractTextFromContent(content))
+        return new AIMessage(typeof processedContent === "string" ? processedContent : extractTextFromContent(processedContent))
       default:
-        return new HumanMessage({ content })
+        // We cast to 'any' to bypass LangChain's strict content type validation which might not know about 'input_file' yet
+        return new HumanMessage({ content: processedContent as any })
     }
   })
 }

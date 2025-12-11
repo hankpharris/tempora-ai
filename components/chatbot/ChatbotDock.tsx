@@ -10,6 +10,7 @@ type ChatRole = "assistant" | "user" | "system"
 type ImageContentPart = {
   type: "image_url"
   image_url: { url: string }
+  name?: string // Optional filename for UI display
 }
 
 type TextContentPart = {
@@ -25,10 +26,11 @@ type ChatMessage = {
   content: string | ContentPart[]
 }
 
-type AttachedImage = {
+type AttachedFile = {
   id: string
   dataUrl: string
   name: string
+  type: string
 }
 
 const INITIAL_ASSISTANT_MESSAGE: ChatMessage = {
@@ -82,6 +84,24 @@ function MessageContent({ content }: { content: string | ContentPart[] }) {
           )
         }
         if (part.type === "image_url") {
+          const isPdf = part.image_url.url.startsWith("data:application/pdf")
+          
+          if (isPdf) {
+            return (
+              <div key={index} className="flex items-center gap-2 rounded-lg border border-default/30 bg-white p-2 pr-3 shadow-sm h-16 min-w-[160px] max-w-full">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-default-100 text-[10px] font-bold text-default-500">
+                  PDF
+                </div>
+                <div className="flex flex-col overflow-hidden min-w-0 flex-1">
+                  <span className="truncate text-[10px] font-medium text-foreground" title={part.name || "Attached Document"}>
+                    {part.name || "Attached Document"}
+                  </span>
+                  <span className="text-[9px] text-default-500">PDF Document</span>
+                </div>
+              </div>
+            )
+          }
+
           return (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -105,7 +125,7 @@ export function ChatbotDock() {
   const [input, setInput] = useState("")
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([])
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const endRef = useRef<HTMLDivElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -126,31 +146,36 @@ export function ChatbotDock() {
 
   const handleReset = useCallback(() => {
     setMessages([INITIAL_ASSISTANT_MESSAGE])
-    setAttachedImages([])
+    setAttachedFiles([])
     setError(null)
   }, [])
 
-  const processImageFiles = useCallback((files: FileList | File[]) => {
+  const processFiles = useCallback((files: FileList | File[]) => {
     Array.from(files).forEach((file) => {
-      if (!file.type.startsWith("image/")) {
-        setError("Only image files are supported.")
+      const isImage = file.type.startsWith("image/")
+      const isPdf = file.type === "application/pdf"
+      
+      if (!isImage && !isPdf) {
+        // Fallback for files with missing type or unsupported types
+        setError("Only image and PDF files are supported.")
         return
       }
 
       if (file.size > 10 * 1024 * 1024) {
-        setError("Images must be under 10MB.")
+        setError("Files must be under 10MB.")
         return
       }
 
       const reader = new FileReader()
       reader.onload = () => {
         const dataUrl = reader.result as string
-        setAttachedImages((prev) => [
+        setAttachedFiles((prev) => [
           ...prev,
           {
-            id: makeMessageId("img"),
+            id: makeMessageId("file"),
             dataUrl,
             name: file.name,
+            type: file.type,
           },
         ])
       }
@@ -158,16 +183,16 @@ export function ChatbotDock() {
     })
   }, [])
 
-  const handleImageSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (!files?.length) return
 
-    processImageFiles(files)
+    processFiles(files)
 
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
-  }, [processImageFiles])
+  }, [processFiles])
 
   const handleDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault()
@@ -204,24 +229,27 @@ export function ChatbotDock() {
     const files = event.dataTransfer.files
     if (!files?.length) return
 
-    const imageFiles = Array.from(files).filter((file) => file.type.startsWith("image/"))
-    if (imageFiles.length === 0) {
-      setError("Only image files are supported.")
+    const validFiles = Array.from(files).filter(
+      (file) => file.type.startsWith("image/") || file.type === "application/pdf"
+    )
+    
+    if (validFiles.length === 0) {
+      setError("Only image and PDF files are supported.")
       return
     }
 
-    processImageFiles(imageFiles)
-  }, [isAuthenticated, sessionLoading, processImageFiles])
+    processFiles(validFiles)
+  }, [isAuthenticated, sessionLoading, processFiles])
 
-  const removeImage = useCallback((imageId: string) => {
-    setAttachedImages((prev) => prev.filter((img) => img.id !== imageId))
+  const removeFile = useCallback((fileId: string) => {
+    setAttachedFiles((prev) => prev.filter((f) => f.id !== fileId))
   }, [])
 
   const sendMessage = useCallback(async () => {
     const trimmed = input.trim()
-    const hasImages = attachedImages.length > 0
+    const hasFiles = attachedFiles.length > 0
     
-    if ((!trimmed && !hasImages) || isSending) {
+    if ((!trimmed && !hasFiles) || isSending) {
       return
     }
 
@@ -232,17 +260,20 @@ export function ChatbotDock() {
 
     let messageContent: string | ContentPart[]
     
-    if (hasImages) {
+    if (hasFiles) {
       const contentParts: ContentPart[] = []
       
       if (trimmed) {
         contentParts.push({ type: "text", text: trimmed })
       }
       
-      attachedImages.forEach((img) => {
+      attachedFiles.forEach((file) => {
+        // Send as image_url for now, assuming the API can handle it or we'll adjust the API route
+        // If it's a PDF, we might need a different handling strategy on backend
         contentParts.push({
           type: "image_url",
-          image_url: { url: img.dataUrl },
+          image_url: { url: file.dataUrl }, // Backend will convert PDF dataUrls to input_file format
+          name: file.name,
         })
       })
       
@@ -260,7 +291,7 @@ export function ChatbotDock() {
 
     setMessages(nextMessages)
     setInput("")
-    setAttachedImages([])
+    setAttachedFiles([])
     setIsSending(true)
     setError(null)
 
@@ -300,7 +331,7 @@ export function ChatbotDock() {
     } finally {
       setIsSending(false)
     }
-  }, [input, isSending, isAuthenticated, messages, attachedImages])
+  }, [input, isSending, isAuthenticated, messages, attachedFiles])
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -406,26 +437,40 @@ export function ChatbotDock() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/*,application/pdf"
                     multiple
                     className="hidden"
-                    onChange={handleImageSelect}
+                    onChange={handleFileSelect}
                     disabled={!isAuthenticated || sessionLoading}
                   />
                   
-                  {attachedImages.length > 0 && (
+                  {attachedFiles.length > 0 && (
                     <div className="flex flex-wrap gap-2 rounded-xl border border-default/20 bg-default-50/50 p-2">
-                      {attachedImages.map((img) => (
-                        <div key={img.id} className="group relative">
+                      {attachedFiles.map((file) => (
+                        <div key={file.id} className="group relative">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={img.dataUrl}
-                            alt={img.name}
-                            className="h-16 w-16 rounded-lg object-cover border border-default/30"
-                          />
+                          {file.type.startsWith("image/") ? (
+                            <img
+                              src={file.dataUrl}
+                              alt={file.name}
+                              className="h-16 w-16 rounded-lg object-cover border border-default/30"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 rounded-lg border border-default/30 bg-white p-2 pr-3 shadow-sm h-16 min-w-[120px]">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-default-100 text-[10px] font-bold text-default-500">
+                                PDF
+                              </div>
+                              <div className="flex flex-col overflow-hidden">
+                                <span className="truncate text-[10px] font-medium text-foreground w-full" title={file.name}>
+                                  {file.name}
+                                </span>
+                                <span className="text-[9px] text-default-500">PDF Document</span>
+                              </div>
+                            </div>
+                          )}
                           <button
                             type="button"
-                            onClick={() => removeImage(img.id)}
+                            onClick={() => removeFile(file.id)}
                             className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-danger text-[10px] text-white opacity-0 shadow transition group-hover:opacity-100"
                           >
                             ✕
@@ -450,7 +495,7 @@ export function ChatbotDock() {
                       }`}
                       placeholder={
                         isAuthenticated
-                          ? "Ask about your events, or drag & drop an image here..."
+                          ? "Ask about your events, or drag & drop a file here..."
                           : "Sign in to start chatting."
                       }
                       value={input}
@@ -460,7 +505,7 @@ export function ChatbotDock() {
                     />
                     {isDragging && (
                       <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-primary/10">
-                        <span className="text-sm font-medium text-primary">Drop image here</span>
+                        <span className="text-sm font-medium text-primary">Drop file here</span>
                       </div>
                     )}
                   </div>
@@ -479,15 +524,15 @@ export function ChatbotDock() {
                         onClick={() => fileInputRef.current?.click()}
                         disabled={!isAuthenticated || isSending || sessionLoading}
                         className="rounded-full border border-default/30 px-3 py-1 font-medium text-default-600 transition hover:bg-default-100/70 disabled:cursor-not-allowed disabled:opacity-50"
-                        title="Attach image"
+                        title="Attach file"
                       >
-                        📷 Image
+                        📎 Attach
                       </button>
                     </div>
                     <button
                       type="submit"
                       disabled={
-                        !isAuthenticated || isSending || (input.trim().length === 0 && attachedImages.length === 0) || sessionLoading
+                        !isAuthenticated || isSending || (input.trim().length === 0 && attachedFiles.length === 0) || sessionLoading
                       }
                       className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-primary/20 transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
                     >
