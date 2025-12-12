@@ -38,7 +38,7 @@ const INITIAL_ASSISTANT_MESSAGE: ChatMessage = {
   id: "assistant-intro",
   role: "assistant",
   content:
-    "Hi! I'm Tempora. Ask me to inspect schedules, create events, or move things around.",
+    "Hi! I'm Tempora. Ask me to inspect schedules, create events, or move things around. I can even process existing schedules via image or pdf.",
 }
 
 const makeMessageId = (prefix: string) =>
