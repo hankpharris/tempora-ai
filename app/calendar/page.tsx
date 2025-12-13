@@ -848,6 +848,7 @@ function expandRepeatingEvents(events: BaseEvent[], today: Date): NormalizedEven
   const minPastDate = addDays(today, -90) // Show 90 days in the past
 
   for (const event of events) {
+    const preExpanded = isPreExpandedEvent(event)
     // Process each time slot in the event
     for (let slotIndex = 0; slotIndex < event.startTimes.length; slotIndex++) {
       const slotStart = event.startTimes[slotIndex]
@@ -856,8 +857,11 @@ function expandRepeatingEvents(events: BaseEvent[], today: Date): NormalizedEven
 
       const slotDuration = slotEnd.getTime() - slotStart.getTime()
 
-      if (event.repeated === "NEVER") {
-        // Non-repeating events: add each time slot as a single occurrence
+      // If the event is already pre-expanded (many concrete dates) or not repeating, treat slots as authoritative.
+      const treatAsSingle = event.repeated === "NEVER" || preExpanded
+
+      if (treatAsSingle) {
+        // Non-repeating or pre-expanded events: add each time slot as a single occurrence
         if (slotStart >= minPastDate && slotStart <= maxFutureDate) {
           expanded.push({
             id: event.startTimes.length === 1 ? event.id : `${event.id}-slot-${slotIndex}`,
@@ -941,4 +945,24 @@ function getNextOccurrence(current: Date, frequency: string): Date {
   }
   
   return next
+}
+
+function isPreExpandedEvent(event: BaseEvent) {
+  if (event.repeated === "NEVER") return true
+  const slots = event.startTimes.filter(Boolean).sort((a, b) => a.getTime() - b.getTime())
+  if (slots.length <= 1) return false
+
+  const spanMs = slots.at(-1)!.getTime() - slots[0]!.getTime()
+  const spanDays = spanMs / DAY_MS
+
+  const windowByFreq: Record<string, number> = {
+    DAILY: 1,
+    WEEKLY: 7,
+    MONTHLY: 32,
+  }
+
+  const window = windowByFreq[event.repeated] ?? 7
+
+  // If the stored slots span more than one recurrence window, treat as pre-expanded.
+  return spanDays > window
 }
