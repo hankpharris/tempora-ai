@@ -6,11 +6,19 @@ import { env } from "@/env.mjs"
 import { auth } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
+const ASSISTANT_INTRO_LINE =
+  "Hi! I'm Tempora. Ask me to inspect schedules, create events, or move things around. I can even process existing schedules via image or pdf."
+
+// Bump this when you want to verify the server is running the latest route code.
+const CHATBOT_ROUTE_REV = "rev-2025-12-12-1"
+
 const imageContentPartSchema = z.object({
   type: z.literal("image_url"),
   image_url: z.object({
     url: z.string().min(1),
   }),
+  // Frontend optionally includes a filename for UI display.
+  name: z.string().optional(),
 })
 
 const textContentPartSchema = z.object({
@@ -104,7 +112,7 @@ When the user mentions times like "tomorrow at 3pm" or "next Monday", interpret 
   return `You are Tempora, a focused assistant that helps the currently authenticated user inspect and mutate their schedules and events, and coordinate with friends.
 ${contextInfo}
 Rules:
-- IMPORTANT: Never repeat the line "Hi! I'm Tempora. Ask me to inspect schedules, create events, or move things around. I can even process existing schedules via image or pdf." in your responses, this is provided to the user automatically my the system.
+- IMPORTANT: Never repeat the line "Hi! I'm Tempora. Ask me to inspect schedules, create events, or move things around. I can even process existing schedules via image or pdf." in your responses, this is provided to the user automatically by the system before your are instantiated. You must still respond.
 - You have the user's Schedule ID in the context. Use it directly to list events or create/update events.
 - Always call the provided tools when you need real data. Do not guess IDs or fabricate schedule contents.
 - IMPORTANT:List events in question before updating or deleting them, these actions should always require clear confirmation.
@@ -117,12 +125,16 @@ Rules:
 - Work in ISO-8601 timestamps (UTC) internally but present times to the user in their local timezone when possible.
 - Keep explanations short. Finish with an actionable summary of what you did or still need.
 - IMPORTANT: NEVER provide internal data like database ids or post-formatting timestamp data (unformated dates are fine, as the the format in which you recieved them)
-
+- IMPORTANT: When provided with and image or final, you must include all critical details for adressing the user request in your response, as you will only be guven one chance to process them, and may need to reference contained info later.
 You are configured on ${model || "gpt-5-mini/nano"} with tool access.`
 }
 
 type IncomingMessage = z.infer<typeof requestSchema>["messages"][number]
 type ContentPart = z.infer<typeof contentPartSchema>
+
+function isPdfDataUrl(url: string) {
+  return url.startsWith("data:application/pdf;base64,")
+}
 
 export async function POST(req: Request) {
   const session = await auth()
@@ -132,8 +144,16 @@ export async function POST(req: Request) {
   }
 
   try {
+    console.log("[chatbot] route.ts", CHATBOT_ROUTE_REV)
     const body = await req.json()
     const { messages, userContext, model } = requestSchema.parse(body)
+
+    // Defensive: if a client ever sends the UI-seeded intro back, strip it.
+    const sanitizedIncomingMessages = messages.filter((m) => {
+      if (m.role !== "assistant") return true
+      if (typeof m.content !== "string") return true
+      return m.content.trim() !== ASSISTANT_INTRO_LINE
+    })
 
     const userId = session.user.id
     const userName = session.user.fname + " " + session.user.lname
@@ -745,31 +765,63 @@ Example 2: Class that meets twice per week (Tue/Thu 10am-11:30am), repeating wee
       systemPrompt,
     })
 
-    const langChainMessages = mapToLangChainMessages(messages)
+    const langChainMessages = mapToLangChainMessages(sanitizedIncomingMessages)
 
     console.log("[chatbot] Invoking agent with", langChainMessages.length, "messages")
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     langChainMessages.forEach((msg, idx) => {
       const msgType = msg._getType()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const contentParts = Array.isArray(msg.content) ? msg.content : []
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const hasImages = contentParts.some((c: any) => c?.type === "image_url")
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const hasPdf = contentParts.some((c: any) => c?.type === "image_url" && (c?.image_url?.url as string)?.includes("application/pdf"))
-    
-    console.log(`[chatbot] Input[${idx}] type=${msgType}, hasImages=${hasImages}, hasPdf=${hasPdf}`)
-  })
+      const contentParts = Array.isArray(msg.content) ? msg.content : []
 
-    const result = await agent.invoke({
-      messages: langChainMessages,
+      const summary = contentParts.reduce(
+        (
+          acc: { images: number; pdfFiles: number; totalChars: number },
+          c: unknown,
+        ): { images: number; pdfFiles: number; totalChars: number } => {
+          const part = c as { type?: unknown }
+
+          if (part?.type === "image_url") {
+            const url = (c as { image_url?: { url?: unknown } })?.image_url?.url
+            if (typeof url === "string") {
+              acc.images += 1
+              acc.totalChars += url.length
+            }
+            return acc
+          }
+
+          if (part?.type === "file") {
+            const fileData = (c as { file?: { file_data?: unknown } })?.file?.file_data
+            if (typeof fileData === "string") {
+              if (fileData.startsWith("data:application/pdf")) acc.pdfFiles += 1
+              acc.totalChars += fileData.length
+            }
+            return acc
+          }
+
+          if (part?.type === "text") {
+            const text = (c as { text?: unknown })?.text
+            if (typeof text === "string") acc.totalChars += text.length
+            return acc
+          }
+
+          return acc
+        },
+        { images: 0, pdfFiles: 0, totalChars: 0 } as { images: number; pdfFiles: number; totalChars: number },
+      )
+    
+      console.log(
+        `[chatbot] Input[${idx}] type=${msgType}, images=${summary.images}, pdfFiles=${summary.pdfFiles}, totalChars=${summary.totalChars}`,
+      )
     })
 
-    const allMessages = result.messages ?? []
+    const runAgent = async (a = agent) => {
+      return await a.invoke({ messages: langChainMessages })
+    }
+
+    let result = await runAgent(agent)
+    let allMessages = result.messages ?? []
     console.log("[chatbot] Agent returned", allMessages.length, "messages")
 
     // Log all messages for debugging
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     allMessages.forEach((msg: { _getType: () => string; content: unknown; tool_calls?: unknown[] }, idx: number) => {
       const msgType = msg._getType()
       const hasToolCalls = "tool_calls" in msg && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0
@@ -782,35 +834,145 @@ Example 2: Class that meets twice per week (Tue/Thu 10am-11:30am), repeating wee
       console.log(`[chatbot] Result[${idx}] type=${msgType}, hasToolCalls=${hasToolCalls}, contentType=${contentType}, content=${contentPreview}`)
     })
 
-    // Find the last AI message that has actual text content (not just tool calls)
-    const aiMessagesWithContent = [...allMessages]
-      .reverse()
-      .filter((msg): msg is AIMessage => msg._getType() === "ai")
-      .filter((msg) => {
-        const content = normalizeContent(msg.content)
-        return content.length > 0
-      })
+    // IMPORTANT: only accept an AI response that occurs AFTER the last human message.
+    // This prevents us from "falling back" to an older plan when the true final AI message is empty.
+    const pickAssistantAfterLastHuman = (msgs: unknown[]): AIMessage | undefined => {
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const msg = msgs[i] as AIMessage | { _getType: () => string; content: unknown }
+        const t = msg?._getType?.()
+        if (t === "human") {
+          // We hit the last human message; if we haven't found an AI after it, stop here.
+          break
+        }
+        if (t === "ai") {
+          const text = normalizeContent((msg as AIMessage).content).trim()
+          if (!text) continue
+          if (text === ASSISTANT_INTRO_LINE) continue
+          return msg as AIMessage
+        }
+      }
+      return undefined
+    }
 
-    const aiMessage = aiMessagesWithContent[0]
+    const aiMessage = pickAssistantAfterLastHuman(allMessages)
 
     if (!aiMessage) {
-      // Fallback: get any AI message and check for tool_calls
+      // If nano produced an empty response, retry once with mini (more reliable on multimodal / file inputs).
+      if (model === "gpt-5-nano") {
+        console.warn("[chatbot] Empty assistant output on nano; retrying once with gpt-5-mini")
+        const llmMini = new ChatOpenAI({
+          model: "gpt-5-mini",
+          maxTokens: 4096,
+          apiKey: env.OPENAI_API_KEY,
+        })
+        const agentMini = createAgent({
+          model: llmMini,
+          tools,
+          systemPrompt,
+        })
+
+        result = await runAgent(agentMini)
+        allMessages = result.messages ?? []
+        console.log("[chatbot] Agent (retry mini) returned", allMessages.length, "messages")
+
+        const retryAiMessage = pickAssistantAfterLastHuman(allMessages)
+        if (retryAiMessage) {
+          const retryResponseContent = normalizeContent(retryAiMessage.content).trim()
+          console.log("[chatbot] Final response length (retry mini):", retryResponseContent.length)
+          return NextResponse.json({
+            message: {
+              role: "assistant",
+              content: retryResponseContent,
+            },
+          })
+        }
+      }
+
+      // Fallback: log any AI message for debugging, but do not return the seeded intro.
       const anyAiMessage = [...allMessages].reverse().find((msg) => msg._getType() === "ai") as AIMessage | undefined
-      
+
       if (anyAiMessage) {
-        console.error("[chatbot] AI message found but has no text content")
+        console.error("[chatbot] No suitable AI text message found (non-empty & not intro).")
         console.error("[chatbot] AI message content:", JSON.stringify(anyAiMessage.content, null, 2))
         console.error("[chatbot] AI message tool_calls:", JSON.stringify(anyAiMessage.tool_calls, null, 2))
         console.error("[chatbot] AI message additional_kwargs:", JSON.stringify(anyAiMessage.additional_kwargs, null, 2))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        console.error("[chatbot] AI message response_metadata:", JSON.stringify((anyAiMessage as any).response_metadata ?? null, null, 2))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        console.error("[chatbot] AI message usage_metadata:", JSON.stringify((anyAiMessage as any).usage_metadata ?? null, null, 2))
       } else {
         console.error("[chatbot] No AI message found at all. Message types:", allMessages.map((m: { _getType: () => string }) => m._getType()))
       }
-      
-      throw new Error("The assistant was unable to craft a response.")
+
+      return NextResponse.json({
+        message: {
+          role: "assistant",
+          content:
+            "I received your message and attachments, but I couldn't generate a response this time. Please try again (if you attached both an image and a PDF, try sending them separately).",
+        },
+      })
     }
 
-    const responseContent = normalizeContent(aiMessage.content)
+    const responseContent = normalizeContent(aiMessage.content).trim()
     console.log("[chatbot] Final response length:", responseContent.length)
+
+    // If the user just confirmed ("yes") but we repeated the previous plan again, retry once with mini
+    // and a stronger instruction to take action instead of restating.
+    const lastUserText = (() => {
+      const lastUser = [...sanitizedIncomingMessages].reverse().find((m) => m.role === "user")
+      if (!lastUser) return ""
+      if (typeof lastUser.content === "string") return lastUser.content.trim()
+      return extractTextFromContent(lastUser.content).trim()
+    })()
+
+    const prevAssistantText = (() => {
+      const prevAssistant = [...sanitizedIncomingMessages].reverse().find((m) => m.role === "assistant")
+      if (!prevAssistant) return ""
+      if (typeof prevAssistant.content === "string") return prevAssistant.content.trim()
+      return extractTextFromContent(prevAssistant.content).trim()
+    })()
+
+    const isAffirmative = /^(yes|yep|yeah|y|ok|okay|sure|sounds good|do it|go ahead)\b/i.test(lastUserText)
+    const looksLikePlan = prevAssistantText.includes("Planned events") || prevAssistantText.includes("Do you want me to add")
+    const repeatedPlan =
+      prevAssistantText.length > 200 &&
+      (responseContent === prevAssistantText ||
+        responseContent.slice(0, 200) === prevAssistantText.slice(0, 200))
+
+    if (isAffirmative && looksLikePlan && repeatedPlan && model !== "gpt-5-mini") {
+      console.warn("[chatbot] Detected repeated plan after confirmation; retrying once with gpt-5-mini")
+
+      const llmMini = new ChatOpenAI({
+        model: "gpt-5-mini",
+        maxTokens: 4096,
+        apiKey: env.OPENAI_API_KEY,
+      })
+
+      const agentMini = createAgent({
+        model: llmMini,
+        tools,
+        systemPrompt: `${systemPrompt}\n\nIMPORTANT: The user has confirmed. Do NOT repeat the planned events list. Immediately call the appropriate tools to create the events.`,
+      })
+
+      const retry = await agentMini.invoke({ messages: langChainMessages })
+      const retryMessages = retry.messages ?? []
+      const retryAi = [...retryMessages]
+        .reverse()
+        .filter((msg): msg is AIMessage => msg._getType() === "ai")
+        .map((m) => ({ m, text: normalizeContent(m.content).trim() }))
+        .find(({ text }) => text.length > 0 && text !== ASSISTANT_INTRO_LINE)?.m
+
+      if (retryAi) {
+        const retryText = normalizeContent(retryAi.content).trim()
+        console.log("[chatbot] Final response length (retry plan->mini):", retryText.length)
+        return NextResponse.json({
+          message: {
+            role: "assistant",
+            content: retryText,
+          },
+        })
+      }
+    }
 
     if (!responseContent) {
       console.error("[chatbot] normalizeContent returned empty for AI message:", JSON.stringify(aiMessage.content, null, 2))
@@ -918,64 +1080,97 @@ function serializeEvent(event: {
   }
 }
 
-function mapToLangChainMessages(messages: IncomingMessage[]) {
-  return messages.map((message) => {
+function mapToLangChainMessages(messages: IncomingMessage[]): Array<SystemMessage | AIMessage | HumanMessage> {
+  const out: Array<SystemMessage | AIMessage | HumanMessage> = []
+
+  const stripImageName = (part: ContentPart): ContentPart => {
+    if (part.type !== "image_url") return part
+    return {
+      type: "image_url",
+      image_url: { url: part.image_url.url },
+    }
+  }
+
+  const toOpenAiFilePart = (part: ContentPart) => {
+    // LangChain/OpenAI expect PDFs as a `file` content block, not `image_url`.
+    // See LangChain multimodal docs: PDFs are passed as { type: "file", file: { filename, file_data } }.
+    if (part.type !== "image_url") return null
+    const url = part.image_url.url
+    if (!isPdfDataUrl(url)) return null
+    const filename = (part.name?.trim() || "document.pdf").replaceAll("\n", " ").slice(0, 200)
+    return {
+      type: "file",
+      file: {
+        filename,
+        file_data: url,
+      },
+    }
+  }
+
+  for (const message of messages) {
     const content = normalizeMessageContent(message.content)
-    
-    // Check for PDF data URLs and convert them to text (placeholder) or remove them
-    // OpenAI's Chat Completion API doesn't support PDFs directly as base64 in "image_url"
-    // They are supported via file uploads (Assistants API) or if using a model with specific capabilities that allows this structure.
-    // However, the error "Invalid MIME type" confirms we cannot send application/pdf in image_url.
-    
-    // As a workaround, we will filter out PDF "image_url" parts and append a system note.
-    // In a real implementation, you'd want to upload the PDF to OpenAI Files API or parse text locally.
-    
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let processedContent: any = content
-    if (Array.isArray(processedContent)) {
-       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-       processedContent = processedContent.map((part: any) => {
-         // Convert standard image_url with PDF data URI to the input_file format expected by experimental models
-         // or handle as raw text/placeholder if using older models that don't support it.
-         
-         if (part.type === "image_url" && part.image_url.url.startsWith("data:application/pdf")) {
-           const matches = part.image_url.url.match(/^data:application\/pdf;base64,(.+)$/)
-           if (matches && matches[1]) {
-             // We're converting the incoming data URL into the OpenAI Chat Completions format
-             // The user provided this specific format:
-             // {
-             //     "type": "file",
-             //     "file": {
-             //         "filename": "my-file.pdf",
-             //         "file_data": "data:application/pdf;base64,..."
-             //     }
-             // }
-             
-             return {
-                type: "file", 
-                file: {
-                    filename: "document.pdf",
-                    file_data: part.image_url.url
-                }
-             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-             } as any
-           }
-         }
-         return part
-       })
+
+    // System / assistant content are always converted to plain text for LangChain message types.
+    if (message.role === "system") {
+      out.push(new SystemMessage(typeof content === "string" ? content : extractTextFromContent(content)))
+      continue
+    }
+    if (message.role === "assistant") {
+      out.push(new AIMessage(typeof content === "string" ? content : extractTextFromContent(content)))
+      continue
     }
 
-    switch (message.role) {
-      case "system":
-        return new SystemMessage(typeof processedContent === "string" ? processedContent : extractTextFromContent(processedContent))
-      case "assistant":
-        return new AIMessage(typeof processedContent === "string" ? processedContent : extractTextFromContent(processedContent))
-      default:
-        // We cast to 'any' to bypass LangChain's strict content type validation which might not know about 'input_file' yet
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return new HumanMessage({ content: processedContent as any })
+    // User message (human)
+    if (!Array.isArray(content)) {
+      out.push(new HumanMessage({ content }))
+      continue
     }
-  })
+
+    const textParts = content.filter((p) => p.type === "text")
+    const imageUrlParts = content.filter((p) => p.type === "image_url")
+    const pdfParts = imageUrlParts.filter((p) => isPdfDataUrl(p.image_url.url))
+    const imageParts = imageUrlParts.filter((p) => !isPdfDataUrl(p.image_url.url))
+    const otherParts = content.filter((p) => p.type !== "text" && p.type !== "image_url")
+
+    // This is the key fix: when the user sends BOTH a PDF and an image in the same message,
+    // split into two sequential HumanMessages. Each modality works on its own, but combined
+    // in one message often yields empty model output.
+    if (pdfParts.length > 0 && imageParts.length > 0) {
+      console.log("[chatbot] Splitting mixed PDF+image user message into separate messages")
+      const pdfFileParts = pdfParts.map((p) => toOpenAiFilePart(p)).filter(Boolean)
+      // `pdfFileParts` includes non-ContentPart blocks (type: "file"), so keep typing loose here.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pdfMessageParts = ([...textParts, ...pdfFileParts, ...otherParts] as any[]).map((p) =>
+        stripImageName(p as ContentPart),
+      )
+
+      const imageIntro: ContentPart[] = [
+        {
+          type: "text",
+          text: "Additional context from the attached image:",
+        },
+      ]
+      const imageMessageParts: ContentPart[] = [...imageIntro, ...imageParts].map(stripImageName)
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      out.push(new HumanMessage({ content: pdfMessageParts as any }))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      out.push(new HumanMessage({ content: imageMessageParts as any }))
+      continue
+    }
+
+    // Otherwise, forward as a single multimodal message (but strip `name` from image parts).
+    const rebuilt = content
+      .map((p) => {
+        const asFile = toOpenAiFilePart(p)
+        if (asFile) return asFile
+        return stripImageName(p)
+      })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    out.push(new HumanMessage({ content: rebuilt as any }))
+  }
+
+  return out
 }
 
 function normalizeMessageContent(content: IncomingMessage["content"]): string | ContentPart[] {

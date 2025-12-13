@@ -44,6 +44,55 @@ const INITIAL_ASSISTANT_MESSAGE: ChatMessage = {
 const makeMessageId = (prefix: string) =>
   `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
 
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function compressImageToDataUrl(
+  file: File,
+  { maxDim = 1280, quality = 0.82 }: { maxDim?: number; quality?: number } = {},
+): Promise<{ dataUrl: string; type: string }> {
+  // Downscale and re-encode to reduce base64 size, which helps avoid model context pressure / empty outputs.
+  // Always output JPEG for size consistency.
+  const mime = "image/jpeg"
+
+  let bitmap: ImageBitmap | null = null
+  try {
+    bitmap = await createImageBitmap(file)
+  } catch {
+    // Fallback: if bitmap creation fails, just send original.
+    const dataUrl = await readFileAsDataUrl(file)
+    return { dataUrl, type: file.type }
+  }
+
+  const srcW = bitmap.width
+  const srcH = bitmap.height
+  const scale = Math.min(1, maxDim / Math.max(srcW, srcH))
+  const dstW = Math.max(1, Math.round(srcW * scale))
+  const dstH = Math.max(1, Math.round(srcH * scale))
+
+  const canvas = document.createElement("canvas")
+  canvas.width = dstW
+  canvas.height = dstH
+  const ctx = canvas.getContext("2d")
+  if (!ctx) {
+    bitmap.close?.()
+    const dataUrl = await readFileAsDataUrl(file)
+    return { dataUrl, type: file.type }
+  }
+
+  ctx.drawImage(bitmap, 0, 0, dstW, dstH)
+  bitmap.close?.()
+
+  const dataUrl = canvas.toDataURL(mime, quality)
+  return { dataUrl, type: mime }
+}
+
 function getUserContext() {
   try {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -119,6 +168,37 @@ function MessageContent({ content }: { content: string | ContentPart[] }) {
   )
 }
 
+function isDataUrl(value: string) {
+  return value.startsWith("data:")
+}
+
+function elideHistoricalAttachmentsForApi(
+  msgs: Array<{ role: ChatRole; content: string | ContentPart[] }>,
+): Array<{ role: ChatRole; content: string | ContentPart[] }> {
+  // Key behavior: after we've sent attachments once, we DO NOT resend giant base64 blobs on later turns.
+  // The assistant's own summary should carry the important extracted info forward.
+  const lastIdx = msgs.length - 1
+  return msgs.map((m, idx) => {
+    if (!Array.isArray(m.content)) return m
+    // Keep attachments only for the latest outgoing user message (if any).
+    const shouldKeepAttachments = idx === lastIdx && m.role === "user"
+    if (shouldKeepAttachments) return m
+
+    const textParts = m.content.filter((p) => p.type === "text")
+    const hadAnyBinary = m.content.some((p) => p.type === "image_url" && isDataUrl(p.image_url.url))
+
+    if (textParts.length > 0) {
+      return { ...m, content: textParts }
+    }
+
+    if (hadAnyBinary) {
+      return { ...m, content: [{ type: "text", text: "[Previous attachment omitted to reduce context size]" }] }
+    }
+
+    return m
+  })
+}
+
 export function ChatbotDock() {
   const { data: session, status } = useSession()
   const router = useRouter()
@@ -153,44 +233,50 @@ export function ChatbotDock() {
     setError(null)
   }, [])
 
-  const processFiles = useCallback((files: FileList | File[]) => {
-    Array.from(files).forEach((file) => {
+  const processFiles = useCallback(async (files: FileList | File[]) => {
+    const next: AttachedFile[] = []
+
+    for (const file of Array.from(files)) {
       const isImage = file.type.startsWith("image/")
       const isPdf = file.type === "application/pdf"
       
       if (!isImage && !isPdf) {
         // Fallback for files with missing type or unsupported types
         setError("Only image and PDF files are supported.")
-        return
+        continue
       }
 
       if (file.size > 10 * 1024 * 1024) {
         setError("Files must be under 10MB.")
-        return
+        continue
       }
 
-      const reader = new FileReader()
-      reader.onload = () => {
-        const dataUrl = reader.result as string
-        setAttachedFiles((prev) => [
-          ...prev,
-          {
-            id: makeMessageId("file"),
-            dataUrl,
-            name: file.name,
-            type: file.type,
-          },
-        ])
+      try {
+        const { dataUrl, type } = isImage
+          ? await compressImageToDataUrl(file)
+          : { dataUrl: await readFileAsDataUrl(file), type: file.type }
+
+        next.push({
+          id: makeMessageId("file"),
+          dataUrl,
+          name: file.name,
+          type,
+        })
+      } catch {
+        setError("Failed to process one of the attached files.")
       }
-      reader.readAsDataURL(file)
-    })
+    }
+
+    if (next.length > 0) {
+      setAttachedFiles((prev) => [...prev, ...next])
+    }
   }, [])
 
   const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
     if (!files?.length) return
 
-    processFiles(files)
+    void processFiles(files)
 
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
@@ -241,7 +327,7 @@ export function ChatbotDock() {
       return
     }
 
-    processFiles(validFiles)
+    void processFiles(validFiles)
   }, [isAuthenticated, sessionLoading, processFiles])
 
   const removeFile = useCallback((fileId: string) => {
@@ -299,11 +385,18 @@ export function ChatbotDock() {
     setError(null)
 
     try {
+      const apiMessages = elideHistoricalAttachmentsForApi(
+        nextMessages
+          .filter((m) => m.id !== INITIAL_ASSISTANT_MESSAGE.id)
+          .map(({ role, content }) => ({ role, content })),
+      )
+
       const response = await fetch("/api/chatbot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: nextMessages.map(({ role, content }) => ({ role, content })),
+          // Don't send the UI-seeded intro back to the API; it can confuse the model and pollute context.
+          messages: apiMessages,
           userContext: getUserContext(),
           model,
         }),
