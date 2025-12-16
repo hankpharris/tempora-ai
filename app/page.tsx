@@ -97,7 +97,7 @@ export default function Web() {
             <div className="grid grid-cols-2 gap-4 text-left text-sm text-slate-800 dark:text-slate-200">
               <div className="rounded-xl border border-[var(--color-primary-100)] bg-[rgba(236,249,240,0.8)] p-4 dark:border-slate-800 dark:bg-[rgba(20,41,28,0.7)]">
                 <p className="text-xs uppercase text-[var(--color-primary-500)]">Today</p>
-                <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">2:00 PM - 3:30 PM</p>
+                <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">2:00 PM - 3:45 PM</p>
                 <p className="text-slate-600 dark:text-slate-300">Study block + review flashcards</p>
               </div>
               <div className="rounded-xl border border-[var(--color-primary-100)] bg-[rgba(236,249,240,0.8)] p-4 dark:border-slate-800 dark:bg-[rgba(20,41,28,0.7)]">
@@ -107,7 +107,7 @@ export default function Web() {
               </div>
               <div className="rounded-xl border border-[var(--color-primary-100)] bg-[rgba(236,249,240,0.8)] p-4 dark:border-slate-800 dark:bg-[rgba(20,41,28,0.7)]">
                 <p className="text-xs uppercase text-[var(--color-primary-500)]">Thursday</p>
-                <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">1:00 PM - 2:30 PM</p>
+                <p className="mt-2 text-lg font-semibold text-slate-900 dark:text-slate-100">1:00 PM - 2:35 PM</p>
                 <p className="text-slate-600 dark:text-slate-300">Group project work time</p>
               </div>
               <div className="rounded-xl border border-[var(--color-primary-100)] bg-[rgba(236,249,240,0.8)] p-4 dark:border-slate-800 dark:bg-[rgba(20,41,28,0.7)]">
